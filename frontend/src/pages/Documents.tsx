@@ -1,12 +1,14 @@
 import { useRef, useState } from "react";
 
 import { documentsApi } from "../api/documents";
+import { SourceViewer } from "../components/SourceViewer";
 import { StatusBadge, useDocuments } from "../hooks/useDocuments";
 
 export default function DocumentsPage() {
   const { items, error, refresh } = useDocuments();
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (files: FileList | null) => {
@@ -80,7 +82,13 @@ export default function DocumentsPage() {
             {items.map((doc) => (
               <tr key={doc.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3">
-                  <p className="font-medium text-slate-800">{doc.title}</p>
+                  <button
+                    className="text-left font-medium text-slate-800 hover:text-blue-700 hover:underline"
+                    title="클릭하면 원본 PDF를 엽니다"
+                    onClick={() => setViewingId(doc.id)}
+                  >
+                    {doc.title}
+                  </button>
                   {doc.error && <p className="mt-0.5 text-xs text-red-600">{doc.error}</p>}
                 </td>
                 <td className="px-4 py-3">
@@ -124,6 +132,15 @@ export default function DocumentsPage() {
           </tbody>
         </table>
       </div>
+
+      {viewingId && items.find((d) => d.id === viewingId) && (
+        <SourceViewer
+          title={`📄 ${items.find((d) => d.id === viewingId)!.title}`}
+          url={documentsApi.fileUrl(viewingId)}
+          kind="pdf"
+          onClose={() => setViewingId(null)}
+        />
+      )}
     </div>
   );
 }

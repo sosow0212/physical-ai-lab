@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from app.api.deps import get_document_service
 from app.schemas.common import PageOut
@@ -49,6 +50,18 @@ async def get_document(
         "document": DocumentOut.from_entity(entity),
         "recent_jobs": [JobOut.from_entity(j) for j in jobs],
     }
+
+
+@router.get("/{document_id}/file")
+async def document_file(
+    document_id: str,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+) -> FileResponse:
+    """원본 PDF 스트림 — 프론트 뷰어(iframe #page=N)로 열람한다."""
+    entity = await service.get_file(document_id)
+    return FileResponse(
+        entity.file_path, media_type="application/pdf", filename=f"{entity.title}.pdf"
+    )
 
 
 @router.delete("/{document_id}", status_code=204)

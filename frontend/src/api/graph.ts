@@ -33,4 +33,11 @@ export const graphApi = {
   overview: () => get<{ nodes: GraphNode[]; links: GraphLink[] }>("/graph/overview"),
   impact: (equipment: string) =>
     get<ImpactResult>(`/graph/impact?equipment=${encodeURIComponent(equipment)}`),
+  upsertNode: (body: { id: string; label: string; name: string; props?: Record<string, string> }) =>
+    post<GraphNode>("/graph/nodes", body),
+  deleteNode: (id: string) => del(`/graph/nodes/${encodeURIComponent(id)}`),
+  upsertEdge: (body: { source: string; target: string; type: string; props?: Record<string, string> }) =>
+    post<GraphLink>("/graph/edges", body),
+  deleteEdge: (source: string, target: string, type: string) =>
+    del(`/graph/edges?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}&type=${type}`),
 };

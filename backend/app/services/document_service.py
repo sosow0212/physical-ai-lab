@@ -79,6 +79,10 @@ class DocumentService:
         )
         return entity, jobs
 
+    async def get_file(self, document_id: str) -> DocumentEntity:
+        """원본 파일 조회용 (뷰어)."""
+        return await self._documents.find_by_id_or_fail(document_id)
+
     async def delete_document(self, document_id: str) -> None:
         """원본 파일 + Mongo 문서 즉시 삭제 → Milvus 청크는 이벤트로 비동기 정리."""
         entity = await self._documents.find_by_id_or_fail(document_id)

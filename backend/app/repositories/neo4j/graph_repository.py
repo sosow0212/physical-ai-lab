@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 # 노드 라벨: Line, Equipment, Sensor, Document
 # 엣지: PART_OF, FEEDS(buffer_sec), AFFECTS(when,severity), MONITORS, ATTACHED_TO, DESCRIBES
 
+#: 사용자 입력으로 생성 가능한 라벨/릴레이션 (Cypher 식별자는 파라미터화 불가 → 화이트리스트 검증)
+ALLOWED_LABELS = frozenset({"Line", "Equipment", "Sensor"})
+ALLOWED_REL_TYPES = frozenset(
+    {"PART_OF", "FEEDS", "AFFECTS", "MONITORS", "ATTACHED_TO", "DESCRIBES"}
+)
+
 SEED_STATEMENTS = [
     "MATCH (n) DETACH DELETE n",  # noqa: E501 — 단일 문장
     """
@@ -182,3 +188,66 @@ class GraphRepository:
         """
         async with self._driver.session() as session:
             await (await session.run(query, doc_id=doc_id, title=title, codes=codes)).consume()
+
+    # ── CRUD (사용자 편집) ──
+
+    async def upsert_node(self, node_id: str, label: str, name: str, props: dict) -> dict:
+        """노드 생성/갱신 (MERGE). 라벨은 화이트리스트로 검증한다."""
+        if label not in ALLOWED_LABELS:
+            raise ValueError(
+                f"허용되지 않은 라벨: {label} ({'/'.join(sorted(ALLOWED_LABELS))} 중 선택)"
+            )
+        query = f"""
+        MERGE (n:{label} {{id: $node_id}})
+        SET n.name = $name, n += $props
+        RETURN n.id AS id, n.name AS name, labels(n)[0] AS label
+        """
+        async with self._driver.session() as session:
+            result = await session.run(query, node_id=node_id, name=name, props=props or {})
+            record = await result.single()
+        logger.info("그래프 노드 저장", extra={"node_id": node_id, "label": label})
+        return dict(record)
+
+    async def delete_node(self, node_id: str) -> int:
+        """노드 + 연결 엣지 삭제 (DETACH DELETE). 삭제된 노드 수 반환."""
+        async with self._driver.session() as session:
+            summary = await session.run(
+                "MATCH (n {id: $node_id}) DETACH DELETE n RETURN count(n) AS c",
+                node_id=node_id,
+            )
+            record = await summary.single()
+        logger.info("그래프 노드 삭제", extra={"node_id": node_id})
+        return record["c"] if record else 0
+
+    async def upsert_edge(self, source: str, target: str, rel_type: str, props: dict) -> dict:
+        """엣지 생성/갱신 (MERGE). 릴레이션 타입은 화이트리스트로 검증한다."""
+        if rel_type not in ALLOWED_REL_TYPES:
+            raise ValueError(
+                f"허용되지 않은 관계: {rel_type} ({'/'.join(sorted(ALLOWED_REL_TYPES))} 중 선택)"
+            )
+        query = f"""
+        MATCH (a {{id: $source}}), (b {{id: $target}})
+        MERGE (a)-[r:{rel_type}]->(b)
+        SET r += $props
+        RETURN a.id AS source, b.id AS target, type(r) AS type
+        """
+        async with self._driver.session() as session:
+            result = await session.run(query, source=source, target=target, props=props or {})
+            record = await result.single()
+        if record is None:
+            raise ValueError(f"노드를 찾을 수 없습니다: {source} 또는 {target}")
+        logger.info("그래프 엣지 저장", extra={"source": source, "target": target, "rel": rel_type})
+        return dict(record)
+
+    async def delete_edge(self, source: str, target: str, rel_type: str) -> int:
+        """엣지 삭제. 삭제된 수 반환."""
+        if rel_type not in ALLOWED_REL_TYPES:
+            raise ValueError(f"허용되지 않은 관계: {rel_type}")
+        query = f"""
+        MATCH (a {{id: $source}})-[r:{rel_type}]->(b {{id: $target}})
+        DELETE r RETURN count(r) AS c
+        """
+        async with self._driver.session() as session:
+            summary = await session.run(query, source=source, target=target)
+            record = await summary.single()
+        return record["c"] if record else 0

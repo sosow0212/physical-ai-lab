@@ -34,6 +34,7 @@ interface Page<T> {
 
 export const documentsApi = {
   list: () => get<Page<DocumentItem>>("/documents"),
+  fileUrl: (id: string) => `/api/v1/documents/${id}/file`,
   upload: (files: File[]) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
