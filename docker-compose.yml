@@ -1,0 +1,276 @@
+name: pal
+
+# ═══════════════ 애플리케이션 ═══════════════
+
+services:
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      CHOKIDAR_USEPOLLING: "true" # Docker 볼륨 환경 HMR
+      API_PROXY_TARGET: http://api:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    command: ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    env_file: .env
+    volumes: # 소스만 선택 마운트 (이미지의 .venv는 그대로 유지)
+      - ./backend/app:/app/app
+      - ./backend/worker:/app/worker
+      - uploads:/data/uploads # 업로드 파일 (worker와 공유)
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request as u; u.urlopen(\"http://localhost:8000/health\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    command: ["/app/.venv/bin/python", "-m", "worker.main"]
+    env_file: .env
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/worker:/app/worker
+      - uploads:/data/uploads
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ═══════════════ 인프라 ═══════════════
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Milvus (standalone) + 의존성 ──
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.16
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  milvus:
+    image: milvusdb/milvus:v2.5.4
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530" # gRPC (attu/호스트 디버깅용)
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9091/healthz"]
+      interval: 20s
+      start_period: 60s
+      timeout: 10s
+      retries: 15
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-palpass}
+      NEO4J_server_memory_pagecache_size: 256M
+    ports:
+      - "7474:7474" # HTTP 브라우저
+      - "7687:7687" # Bolt
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p '${NEO4J_PASSWORD:-palpass123}' 'RETURN 1' >/dev/null"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  redpanda:
+    image: redpandadata/redpanda:v24.3.7
+    command:
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --overprovisioned
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:29092,PLAINTEXT_HOST://localhost:9092
+    ports:
+      - "9092:9092" # 호스트 접근용 (컨테이너 내부는 29092)
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info -X brokers=127.0.0.1:9092 >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ═══════════════ 프로파일: debug (웹 콘솔) ═══════════════
+  # 실행: make up-debug
+
+  mongo-express:
+    profiles: ["debug"]
+    image: mongo-express:1.0.2-20
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "8911:8081"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  attu:
+    profiles: ["debug"]
+    image: zilliz/attu:v2.5.0
+    environment:
+      MILVUS_URL: milvus:19530
+    ports:
+      - "8912:3000"
+    depends_on:
+      milvus:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redpanda-console:
+    profiles: ["debug"]
+    image: redpandadata/console:v2.6.1
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "8913:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 채팅 LLM은 GLM API(외부), 임베딩은 로컬 bge-m3로 서빙 (Phase 3+: 로컬 LLM 폴백으로도 사용 가능)
+  ollama:
+    image: ollama/ollama:latest
+    # ENTRYPOINT(/bin/ollama)를 오버라이드해 셸 스크립트 실행
+    entrypoint: ["/bin/sh", "-c"]
+    # 기동 시 임베딩 모델(bge-m3) 자동 pull — 이미 캐시되면 즉시 통과
+    command:
+      - |
+        ollama serve &
+        until ollama pull bge-m3; do echo '[init] bge-m3 pull 재시도...'; sleep 3; done
+        wait
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  redis_data:
+  etcd_data:
+  minio_data:
+  milvus_data:
+  neo4j_data:
+  redpanda_data:
+  uploads:
+  frontend_node_modules:
+  ollama_models:
