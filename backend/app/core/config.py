@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     """전역 설정. 필드명 = 환경 변수명 (대소문자 무관)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(
+            ".env",
+            "../.env",
+        ),  # 백엔드 디렉터리 기준 → 프로젝트 루트 .env (나중 파일이 우선)
         env_file_encoding="utf-8",
         extra="ignore",
     )

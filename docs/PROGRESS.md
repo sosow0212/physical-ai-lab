@@ -4,30 +4,31 @@
 > 작업 완료 시 해당 항목을 `[x]`로 변경하고, 한 줄 로그를 남긴다. 설계 변경이 발생하면 `docs/WORKPLAN.md`도 함께 수정한다.
 
 ## 현재 상태
-- **진행 중인 Phase: 0**
-- 마지막 업데이트: 2025-08-14 — LLM/임베딩을 GLM Coding Plan(z.ai)으로 변경 (구현 미착수)
+- **진행 중인 Phase: 2** (문서 수집 파이프라인)
+- 마지막 업데이트: 2025-08-14 — Phase 0/1 완료 (AI 하이브리드 확정: 채팅=GLM Coding Plan, 임베딩=로컬 Ollama bge-m3)
 
 ---
 
-## Phase 0 — 스캐폴딩 & 인프라
-- [ ] 모노레포 디렉터리 생성 (backend/, frontend/, docker/, docs/, sample-data/)
-- [ ] docker-compose.yml (mongo, redis, milvus+etcd+minio, neo4j, redpanda) — LLM은 외부 API(GLM z.ai)
-- [ ] (선택) ollama 서비스를 local-llm 프로파일로 추가
-- [ ] debug 프로파일 (mongo-express, attu, redpanda-console)
-- [ ] Makefile (up/down/reset/logs/bootstrap)
-- [ ] backend: pyproject.toml, uv 세팅, app 골격(빈 main.py)
-- [ ] frontend: Vite React-TS 스캐폴드 + Tailwind
-- [ ] .env.example (GLM_API_KEY 포함), .gitignore
-- [ ] README.md (실행/종료 가이드 최초 작성)
-- [ ] 검증: `make up` 후 모든 인프라 헬스체크 통과
+## Phase 0 — 스캐폴딩 & 인프라 ✅
+- [x] 모노레포 디렉터리 생성 (backend/, frontend/, docs/, sample-data/)
+- [x] docker-compose.yml (mongo, redis, milvus+etcd+minio, neo4j, redpanda, ollama) — LLM 채팅은 외부 API(GLM z.ai)
+- [x] ollama는 로컬 임베딩(bge-m3) 담당 코어 서비스로 확정 (ADR 참조)
+- [x] debug 프로파일 (mongo-express, attu, redpanda-console)
+- [x] Makefile (up/down/reset/logs/build/gen-data/bootstrap)
+- [x] backend: pyproject.toml + uv 세팅, 앱 팩토리 골격
+- [x] frontend: Vite React-TS 스캐폴드 + Tailwind (사이드바 셸)
+- [x] .env.example (GLM_API_KEY 포함), .gitignore (.env 커밋 제외 확인)
+- [x] README.md (실행/종료 가이드)
+- [x] 검증: `make up` 후 전 서비스 healthy + Vite 프록시 + 컨테이너 내 GLM 채팅/bge-m3 임베딩 실측 통과
 
-## Phase 1 — 백엔드 골격 & 샘플 데이터
-- [ ] core(config/logging/errors/lifespan)
-- [ ] domain 모델 4종 + repositories 베이스(Mongo)
-- [ ] api/v1 라우터 조립 + /health + 공통 에러 응답
-- [ ] scripts/gen_sample_data.py — 매뉴얼 6종 PDF 생성
-- [ ] scripts/gen_sample_data.py — 도면 3종 PNG 생성
-- [ ] 검증: uvicorn 기동 + /health 200, sample-data/ 생성
+## Phase 1 — 백엔드 골격 & 샘플 데이터 ✅
+- [x] core(config/logging/errors/lifespan) + 요청 ID 미들웨어
+- [x] domain 모델 4종 (document/drawing/chat/ingestion_job, StrEnum)
+- [x] repositories 베이스(MongoRepository, PEP 695 제네릭) + 구현체 4종
+- [x] api/v1 라우터 조립 + /health(컴포넌트별 상태) + /health/live + 공통 에러 봉투
+- [x] scripts/gen_sample_data.py — 매뉴얼 6종 PDF 생성 (fpdf2+NanumGothic)
+- [x] scripts/gen_sample_data.py — 도면 3종 PNG 생성 (matplotlib, 타이틀 블록 포함)
+- [x] 검증: ruff/pytest 통과, 도커 /health 전 컴포넌트 ok, 텍스트 추출 품질(폰트 크기 20/13/10.5/9.5 분포) 확인
 
 ## Phase 2 — 문서 수집 파이프라인
 - [ ] infrastructure: kafka(producer), storage, milvus 클라이언트
@@ -81,3 +82,6 @@
 |---|---|---|
 | 2025-08-14 | docs/WORKPLAN.md 초안 작성 | 전체 설계 확정, 구현 미착수 |
 | 2025-08-14 | LLM을 GLM Coding Plan(z.ai, glm-4.6 + embedding-3)으로 변경 | Ollama는 local-llm 선택 프로파일로 강등, EMBEDDING_DIM 2048 |
+| 2025-08-14 | Phase 0 완료 — compose 스택 11종 전부 healthy, GLM 채팅 실측 통과 | api 컨테이너에서 코딩 플랜 엔드포인트(/api/coding/paas/v4) 검증 |
+| 2025-08-14 | 임베딩을 로컬 Ollama bge-m3(1024d)로 확정 (하이브리드) | Coding Plan에 임베딩 API 부재 실측. ollama 코어 서비스화 + bge-m3 자동 pull |
+| 2025-08-14 | Phase 1 완료 — 백엔드 골격(레이어/도메인/리포지토리/헬스) + 샘플 데이터 9종 생성 | ruff+pytest 통과, /health 전 컴포넌트 ok, PDF 텍스트 추출 검증 |

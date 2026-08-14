@@ -3,10 +3,10 @@
 
 COMPOSE ?= docker compose
 
-.PHONY: help build up up-debug down reset ps logs bootstrap test fmt
+.PHONY: help build up up-debug down reset ps logs bootstrap test fmt gen-data
 
 help: ## 명령어 도움말
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}''
 
 build: ## 이미지 빌드 (uv.lock 변경 시)
 	$(COMPOSE) build
@@ -29,8 +29,12 @@ ps: ## 서비스 상태 확인
 logs: ## 로그 팔로우 (예: make logs s=api)
 	$(COMPOSE) logs -f $(s)
 
-bootstrap: up ## 샘플 데이터 생성 + 시드 + 적재 (Phase 1/2 완료 후 전체 활성화)
-	@echo ">> 샘플 데이터 시딩은 Phase 1(생성 스크립트) / Phase 2(업로드) 이후 활성화됩니다."
+gen-data: ## 샘플 매뉴얼 PDF/도면 PNG 생성 (sample-data/)
+	cd backend && uv run --group data python scripts/gen_sample_data.py
+
+bootstrap: up ## 스택 기동 + 샘플 데이터 시드 (Phase 2 완료 후 업로드까지 자동화)
+	$(MAKE) gen-data
+	@echo ">> Phase 4 이후: graph reseed + 샘플 업로드가 여기에 추가됩니다."
 	@echo ">> 현재 상태: make ps 로 헬스 확인 → http://localhost:5173"
 
 test: ## 백엔드 테스트

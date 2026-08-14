@@ -1,22 +1,26 @@
-"""헬스체크 API — 프로세스 생존 + 주요 설정 로드 여부 확인."""
-from fastapi import APIRouter
+"""헬스체크 API — liveness + 컴포넌트 상태."""
 
-from app.core.config import get_settings
+from typing import Any
+
+from fastapi import APIRouter, Request
+
+from app.services.health_service import collect_health
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-def health() -> dict:
-    """Liveness. 인프라별 상세 체크는 Phase 1 lifespan에서 확장한다."""
-    s = get_settings()
-    return {
-        "status": "ok",
-        "app_env": s.app_env,
-        "llm": {
-            "provider": s.llm_provider,
-            "model": s.llm_model,
-            "api_key_configured": bool(s.llm_api_key),
-        },
-        "embedding": {"provider": s.embedding_provider, "model": s.embedding_model, "dim": s.embedding_dim},
-    }
+async def health(request: Request) -> dict[str, Any]:
+    """컴포넌트 상태 포함 헬스. 일부 다운이어도 200 (degraded 표시).
+
+    liveness만 빠르게 확인하고 싶으면 GET /health/live 를 사용한다.
+    """
+    mongo_client = getattr(request.app.state, "mongo_client", None)
+    redis_client = getattr(request.app.state, "redis", None)
+    return await collect_health(mongo_client, redis_client)
+
+
+@router.get("/health/live")
+async def liveness() -> dict[str, str]:
+    """프로세스 생존만 확인 (의존성 체크 없음 — 도커 healthcheck용)."""
+    return {"status": "ok"}

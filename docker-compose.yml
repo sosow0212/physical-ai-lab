@@ -23,6 +23,9 @@ services:
   api:
     build: ./backend
     command: ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      # macOS Docker Desktop은 inotify 이벤트가 컨테이너로 전달되지 않아 폴링 강제
+      WATCHFILES_FORCE_POLLING: "true"
     env_file: .env
     volumes: # 소스만 선택 마운트 (이미지의 .venv는 그대로 유지)
       - ./backend/app:/app/app

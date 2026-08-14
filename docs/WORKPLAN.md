@@ -11,12 +11,7 @@
 ### 0.1 목표
 스마트공장의 **공정 매뉴얼(PDF)과 설계도면을 RAG로 활용하는 챗봇 서비스**를 학습 목적으로 구축한다.
 
-### 0.2 사용자(개발자) 프로필
-- 백엔드: **Spring 4년 경력**. FastAPI는 처음 → 정석적인 레이어드 아키텍처(router → service → repository)와 DI를 익히는 것이 1차 학습 목표.
-- 프론트: 거의 처음 → Vite + React로 기본기를 익힌다.
-- 인프라: docker compose로 통합 기동. (이직 후 k8s 사용 예정 → Phase 7에서 선택적 도입)
-
-### 0.3 성공 기준 (Acceptance)
+### 0.2 성공 기준 (Acceptance)
 1. `make bootstrap` 한 번으로 전체 스택 기동 후, 샘플 매뉴얼/도면이 자동 적재된다.
 2. 챗봇에서 "1번 라인 온도가 올라가는데 영향범위를 알려줘" 같은 질문에 **출처(문서명/페이지)를 명시한** 답변을 스트리밍한다.
 3. 관리 페이지에서 매뉴얼 PDF를 추가/삭제하고, 설계도면을 등록/수정/삭제(revision 포함)할 수 있다.
@@ -62,9 +57,9 @@ flowchart LR
     G[(Neo4j<br/>지식그래프)]
     K{{"Redpanda<br/>(Kafka API)"}}
   end
-  subgraph CLOUD [External · GLM Coding Plan (z.ai) — OpenAI 호환 API]
-    LLM["GLM-4.6<br/>(chat)"]
-    EMB["embedding-3<br/>(2048d)"]
+  subgraph CLOUD [AI · GLM API(외부 채팅) + Ollama(로컬 임베딩)]
+    LLM["GLM-4.6<br/>(chat, Coding Plan)"]
+    EMB["bge-m3 1024d<br/>(embedding)"]
   end
   UI -->|REST / SSE| API
   API --> M
@@ -91,6 +86,7 @@ flowchart LR
 | `milvus-etcd`, `milvus-minio` | - | - | Milvus 내부 의존성 |
 | `neo4j` | neo4j:5-community | 7474 / 7687 | 지식그래프 |
 | `redpanda` | redpandadata/redpanda:v24.x | 9092 | Kafka API 호환 브로커 (단일 노드) |
+| `ollama` | ollama/ollama | 11434 | 로컬 임베딩(bge-m3 자동 pull) — Coding Plan에 임베딩 API가 없어 로컬 서빙 |
 | `mongo-express` (profile: debug) | - | 8911 | Mongo 웹 콘솔 |
 | `attu` (profile: debug) | zilliz/attu | 8912 | Milvus 웹 콘솔 |
 | `redpanda-console` (profile: debug) | - | 8913 | Kafka 웹 콘솔 |
@@ -117,7 +113,7 @@ sequenceDiagram
   API-->>UI: 202 Accepted (document_id)
   K->>WK: consume
   WK->>M: status=PROCESSING
-  WK->>WK: PDF 파싱 → 구조 청킹 → 임베딩(GLM embedding-3)
+  WK->>WK: PDF 파싱 → 구조 청킹 → 임베딩(Ollama bge-m3)
   WK->>V: insert chunks (payload 포함)
   WK->>M: status=DONE (page_count, chunk_count)
 ```
@@ -152,7 +148,7 @@ sequenceDiagram
 | 그래프 DB | Neo4j 5 community | "영향범위" 질문 = 관계 traversal. 요구사항에서 허용됨 |
 | 메시지 브로커 | Redpanda (Kafka API) | §2.2 참조. aiokafka 클라이언트 사용(Kafka와 동일 코드) |
 | 캐시 | Redis 7 | 임베딩 캐시, 최근 대화 캐시, job 진행 상태 |
-| LLM/임베딩 | **GLM Coding Plan (z.ai)** — glm-4.6 채팅 + embedding-3(2048차원), OpenAI 호환 API | 구독형(비용 예측 가능)·GPU 불필요. `LLM_PROVIDER`로 openai/ollama(로컬) 교체 가능 |
+| LLM/임베딩 | 채팅: **GLM Coding Plan(z.ai)** glm-4.6 · 임베딩: **로컬 Ollama bge-m3**(1024차원) | 구독으로 채팅 무제한·GPU 불필요. Coding Plan에 임베딩 API가 없어 임베딩만 로컬 서빙(하이브리드). 각각 provider 교체 가능 |
 | 프론트 | Vite + React 18 + TypeScript + TailwindCSS | 요구사항. react-router-dom, TanStack Query, zustand, axios |
 | 그래프 시각화 | react-force-graph-2d | canvas 기반, Neo4j 결과 시각화에 적합 |
 | PDF 파싱 | PyMuPDF (fitz) | 폰트 크기 기반 헤딩 감지 가능, 빠름 |
@@ -289,8 +285,8 @@ backend/
 ### 4.4 Milvus 컬렉션
 | 컬렉션 | 필드 | 인덱스 |
 |---|---|---|
-| `manual_chunks` | id(auto), doc_id(Int64), seq, text, embedding(2048, FLOAT_VECTOR), page, heading | HNSW(M=16, efConstruction=200), COSINE. partition_key=doc_id 없이 expr 필터 `doc_id == x` 로 삭제 |
-| `drawing_cards` | id(auto), drawing_id, title, description, embedding(2048), equipment, line, revision | 동일 |
+| `manual_chunks` | id(auto), doc_id(Int64), seq, text, embedding(1024, FLOAT_VECTOR), page, heading | HNSW(M=16, efConstruction=200), COSINE. partition_key=doc_id 없이 expr 필터 `doc_id == x` 로 삭제 |
+| `drawing_cards` | id(auto), drawing_id, title, description, embedding(1024), equipment, line, revision | 동일 |
 
 - 검색: `embedding` 유사도 top-k + `doc_id not in (삭제대상)` 등 expr 필터
 - Phase 6: Milvus 2.5 내장 BM25 sparse 필드 추가 → 하이브리드(dense+sparse) + RRF
@@ -393,11 +389,13 @@ event: error     data: {"code": "...", "message": "..."}       # 스트리밍 �
 | KAFKA_BOOTSTRAP | redpanda:9092 | |
 | KAFKA_GROUP_ID | pal-worker | |
 | LLM_PROVIDER | glm | glm / openai / ollama |
-| LLM_BASE_URL | https://api.z.ai/api/paas/v4 | GLM(z.ai) OpenAI 호환 엔드포인트. 국내(bigmodel.cn)는 https://open.bigmodel.cn/api/paas/v4 |
+| LLM_BASE_URL | https://api.z.ai/api/coding/paas/v4 | GLM Coding Plan 전용 엔드포인트(일반 paas/v4는 잔액 필요). 국내(bigmodel.cn)는 https://open.bigmodel.cn/api/paas/v4 |
 | GLM_API_KEY | (필수) | GLM Coding Plan 키. `.env`에 넣고 **커밋 금지** |
 | LLM_MODEL | glm-4.6 | 경량 대안: glm-4.5-air / glm-4-flash |
-| EMBEDDING_MODEL | embedding-3 | z.ai 임베딩 |
-| EMBEDDING_DIM | 2048 | 모델 교체 시 Milvus 컬렉션 재생성 필요 |
+| EMBEDDING_PROVIDER | ollama | ollama(로컬) / openai(호환 API) |
+| EMBEDDING_BASE_URL | http://ollama:11434 | 로컬 Ollama 주소 |
+| EMBEDDING_MODEL | bge-m3 | 다국어 임베딩, 한국어 강함 |
+| EMBEDDING_DIM | 1024 | 모델 교체 시 Milvus 컬렉션 재생성 필요 |
 | OPENAI_API_KEY / OPENAI_BASE_URL | (없음) | provider=openai일 때 |
 | OLLAMA_BASE_URL | http://localhost:11434 | provider=ollama일 때 (compose profile: local-llm) |
 | UPLOAD_DIR | /data/uploads | 도커 볼륨 마운트 |
@@ -425,7 +423,7 @@ class OllamaProvider(LLMProvider): ...       # 선택: 로컬 폴백 (profile: l
 1. **수신**: api가 multipart 수신 → 파일은 볼륨 저장(`/data/uploads/{yyyy}/{uuid}.{ext}`) → Mongo document(status=PENDING) + job 생성 → Kafka 발행 → 202 반환.
 2. **파싱**: PyMuPDF로 페이지별 텍스트 블록 + 폰트 크기 추출 → 폰트 크기 상위 값을 헤딩으로 판단해 섹션 트리 구성.
 3. **청킹**: 섹션(헤딩 경로 포함) 단위로 분할. 최대 900자, overlap 150자. 청크 메타: `{doc_id, seq, page, heading_path}`.
-4. **임베딩**: GLM embedding-3. Redis 캐시 조회 → 미스 시 배치 API 호출.
+4. **임베딩**: 로컬 Ollama bge-m3. Redis 캐시 조회 → 미스 시 배치 호출.
 5. **적재**: Milvus insert. 기존 doc_id 청크가 있으면(재수집) 먼저 expr 삭제 후 insert.
 6. **완료**: Mongo 업데이트(status=DONE, page_count, chunk_count), job DONE, Redis 진행률 갱신.
 - **도면 파이프라인**: (title+설비+line+description) 텍스트 임베딩 → `drawing_cards` 적재. 파일은 검색 후 원본 첨부로 노출.
@@ -607,4 +605,5 @@ make fmt           # ruff + mypy (backend), biome or eslint (frontend)
 | 날짜 | 결정 | 이유 |
 |---|---|---|
 | 2025-08-14 | 초안 작성 | 요구사항 반영 |
-| 2025-08-14 | LLM/임베딩을 Ollama → **GLM Coding Plan(z.ai)** 으로 변경. ollama는 선택 프로파일(local-llm)로 강등 | 사용자가 GLM Coding Plan 구독. GPU·모델 다운로드 불필요, 비용 예측 가능. EMBEDDING_DIM 1024→2048 |
+| 2025-08-14 | LLM/임베딩을 Ollama → **GLM Coding Plan(z.ai)** 으로 변경. ollama는 선택 프로파일(local-llm)로 강등 | 사용자가 GLM Coding Plan 구독. GPU·모델 다운로드 불필요, 비용 예측 가능 |
+| 2025-08-14 | 임베딩만 GLM → **로컬 Ollama bge-m3(1024d)** 로 재전환 (하이브리드 확정). ollama는 코어 서비스로 복귀 | 실측: Coding Plan 엔드포인트(/api/coding/paas/v4)는 채팅 전용이라 임베딩 API 부재, 일반 paas/v4는 잔액 필요. 채팅=GLM 구독 + 임베딩=로컬 무료가 최적 조합 |
