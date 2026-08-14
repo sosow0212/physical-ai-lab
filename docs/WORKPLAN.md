@@ -391,7 +391,7 @@ event: error     data: {"code": "...", "message": "..."}       # 스트리밍 �
 | LLM_PROVIDER | glm | glm / openai / ollama |
 | LLM_BASE_URL | https://api.z.ai/api/coding/paas/v4 | GLM Coding Plan 전용 엔드포인트(일반 paas/v4는 잔액 필요). 국내(bigmodel.cn)는 https://open.bigmodel.cn/api/paas/v4 |
 | GLM_API_KEY | (필수) | GLM Coding Plan 키. `.env`에 넣고 **커밋 금지** |
-| LLM_MODEL | glm-4.6 | 경량 대안: glm-4.5-air / glm-4-flash |
+| LLM_MODEL | glm-5.3 | 실측 가용 최신 (glm-5/5.1/5.2/5.3). 저지연 필요 시 glm-5-turbo |
 | EMBEDDING_PROVIDER | ollama | ollama(로컬) / openai(호환 API) |
 | EMBEDDING_BASE_URL | http://ollama:11434 | 로컬 Ollama 주소 |
 | EMBEDDING_MODEL | bge-m3 | 다국어 임베딩, 한국어 강함 |
@@ -607,3 +607,4 @@ make fmt           # ruff + mypy (backend), biome or eslint (frontend)
 | 2025-08-14 | 초안 작성 | 요구사항 반영 |
 | 2025-08-14 | LLM/임베딩을 Ollama → **GLM Coding Plan(z.ai)** 으로 변경. ollama는 선택 프로파일(local-llm)로 강등 | 사용자가 GLM Coding Plan 구독. GPU·모델 다운로드 불필요, 비용 예측 가능 |
 | 2025-08-14 | 임베딩만 GLM → **로컬 Ollama bge-m3(1024d)** 로 재전환 (하이브리드 확정). ollama는 코어 서비스로 복귀 | 실측: Coding Plan 엔드포인트(/api/coding/paas/v4)는 채팅 전용이라 임베딩 API 부재, 일반 paas/v4는 잔액 필요. 채팅=GLM 구독 + 임베딩=로컬 무료가 최적 조합 |
+| 2026-08-15 | 채팅 모델 glm-4.6 → **glm-5.3** 승격 | /models 목록 + 스트리밍 실측으로 가용 확인 (5.3은 항상 reasoning 소비하지만 본문 정상, max_tokens 4096 유지). PDF 파서를 절대 임계→문서별 적응형(본문=최빈 크기, 헤딩=본문+1.5pt)으로 교체 — PowerPoint제 퇴사 PDF 오분류(본문 12pt 전부 헤딩화) 해결, 실측 12청크 수집 성공 |
