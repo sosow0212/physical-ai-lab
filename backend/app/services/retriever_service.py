@@ -9,6 +9,7 @@ from redis.asyncio import Redis
 from app.core.config import Settings
 from app.infrastructure.milvus import (
     ensure_drawing_cards,
+    hybrid_search_manual_chunks,
     query_manual_chunks,
     search_drawing_cards,
     search_manual_chunks,
@@ -84,11 +85,20 @@ class RetrieverService:
         ensure_drawing_cards(milvus, settings.embedding_dim)
 
     async def retrieve(self, question: str) -> RetrievalResult:
-        """질의 → 임베딩 → 매뉴얼 top-k(+이웃) + 도면 카드 → 컨텍스트 조립."""
+        """질의 → 임베딩 → 하이브리드(dense+BM25/RRF) 검색 + 도면 카드 → 컨텍스트 조립.
+
+        하이브리드 검색 실패 시(구버전 컬렉션 등) dense 검색으로 폴백한다.
+        """
         vector = (await embed_texts([question], redis_client=self._redis, settings=self._settings))[
             0
         ]
-        hits = search_manual_chunks(self._milvus, vector, top_k=self._settings.retrieval_top_k)
+        try:
+            hits = hybrid_search_manual_chunks(
+                self._milvus, vector, question, top_k=self._settings.retrieval_top_k
+            )
+        except Exception as exc:
+            logger.warning("하이브리드 검색 실패 → dense 폴백", extra={"error": str(exc)[:150]})
+            hits = search_manual_chunks(self._milvus, vector, top_k=self._settings.retrieval_top_k)
         chunks = self._expand_neighbors([RetrievedChunk(**hit) for hit in hits])
         chunks = self._trim_to_budget(chunks) + self._search_drawings(vector)
         return RetrievalResult(chunks=chunks, titles=await self._resolve_titles(chunks))

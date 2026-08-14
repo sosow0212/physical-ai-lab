@@ -16,6 +16,7 @@ from app.repositories.neo4j.graph_repository import GraphRepository
 from app.services.chat_service import ChatService
 from app.services.document_service import DocumentService
 from app.services.drawing_service import DrawingService
+from app.services.stats_service import StatsService
 
 
 def get_mongo_db(request: Request):
@@ -80,4 +81,11 @@ def get_drawing_service(request: Request) -> DrawingService:
         producer=request.app.state.kafka_producer,
         storage=FileStorage(get_settings()),
         settings=get_settings(),
+    )
+
+
+def get_stats_service(request: Request) -> StatsService:
+    return StatsService(
+        db=request.app.state.mongo_db,
+        graph_repo=GraphRepository(request.app.state.neo4j),
     )

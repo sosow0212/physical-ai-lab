@@ -289,7 +289,7 @@ backend/
 | `drawing_cards` | id(auto), drawing_id, title, description, embedding(1024), equipment, line, revision | 동일 |
 
 - 검색: `embedding` 유사도 top-k + `doc_id not in (삭제대상)` 등 expr 필터
-- Phase 6: Milvus 2.5 내장 BM25 sparse 필드 추가 → 하이브리드(dense+sparse) + RRF
+- Phase 6 ✅: Milvus 2.5 내장 BM25(sparse+Function, **standard 애널라이저** — 2.5.4에는 korean 없음) → 하이브리드(dense+sparse) + RRF. 구버전 컬렉션은 ensure 시 자동 drop+재생성(재수집 필요). 검색 실패 시 dense 폴백.
 - 임베딩 차원은 settings의 `EMBEDDING_DIM`을 따름. 임베딩 모델 교체 시 컬렉션 drop 후 전체 reingest 필요.
 
 ### 4.5 Neo4j 그래프 모델

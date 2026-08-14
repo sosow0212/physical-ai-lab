@@ -1,10 +1,11 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 
 import ChatPage from "./pages/Chat";
+import DashboardPage from "./pages/Dashboard";
 import DocumentsPage from "./pages/Documents";
 import DrawingsPage from "./pages/Drawings";
 import GraphPage from "./pages/Graph";
-import { Placeholder } from "./pages/Placeholder";
+import PipelinePage from "./pages/Pipeline";
 
 const NAV_ITEMS = [
   { to: "/", label: "대시보드", icon: "▦", phase: "Phase 6" },
@@ -53,12 +54,12 @@ export default function App() {
       {/* 메인 영역 */}
       <main className="flex-1 overflow-y-auto">
         <Routes>
-          <Route path="/" element={<Placeholder title="대시보드" phase="Phase 6" />} />
+          <Route path="/" element={<DashboardPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/drawings" element={<DrawingsPage />} />
           <Route path="/graph" element={<GraphPage />} />
-          <Route path="/pipeline" element={<Placeholder title="수집 작업" phase="Phase 6" />} />
+          <Route path="/pipeline" element={<PipelinePage />} />
         </Routes>
       </main>
     </div>
