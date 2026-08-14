@@ -12,6 +12,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import get_settings
+from app.infrastructure.kafka import create_producer, stop_producer
+from app.infrastructure.milvus import create_milvus_client, ensure_manual_chunks
 from app.infrastructure.mongo import create_mongo_client
 from app.infrastructure.redis import create_redis
 
@@ -25,15 +27,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     mongo_client = create_mongo_client(settings)
     redis_client = create_redis(settings)
+    kafka_producer = await create_producer(settings)
+    milvus_client = create_milvus_client(settings)
+    ensure_manual_chunks(milvus_client, settings.embedding_dim)
 
     app.state.mongo_client = mongo_client
     app.state.mongo_db = mongo_client.get_default_database()
     app.state.redis = redis_client
+    app.state.kafka_producer = kafka_producer
+    app.state.milvus = milvus_client
 
     logger.info("인프라 연결 완료", extra={"component": "lifespan"})
 
     yield
 
+    await stop_producer(kafka_producer)
     await redis_client.aclose()
+    milvus_client.close()
     mongo_client.close()
     logger.info("인프라 연결 종료", extra={"component": "lifespan"})

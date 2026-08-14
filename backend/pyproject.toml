@@ -11,6 +11,10 @@ dependencies = [
     "motor>=3.6",
     "redis>=5.2",
     "pymupdf>=1.25",
+    "aiokafka>=0.12",
+    "pymilvus>=2.5",
+    "neo4j>=5.27",
+    "python-multipart>=0.0.20",
 ]
 
 [dependency-groups]

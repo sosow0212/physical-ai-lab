@@ -7,10 +7,12 @@
 from fastapi import Request
 
 from app.core.config import Settings, get_settings
+from app.infrastructure.storage import FileStorage
 from app.repositories.mongo.chat_repository import ChatMessageRepository, ChatSessionRepository
 from app.repositories.mongo.document_repository import DocumentRepository
 from app.repositories.mongo.drawing_repository import DrawingRepository
 from app.repositories.mongo.ingestion_job_repository import IngestionJobRepository
+from app.services.document_service import DocumentService
 
 
 def get_mongo_db(request: Request):
@@ -22,7 +24,7 @@ def get_settings_dep() -> Settings:
     return get_settings()
 
 
-# ── 저장소 프로바이더 (Annotated 로 간단히 주입) ──
+# ── 저장소 프로바이더 ──
 def get_document_repository(request: Request) -> DocumentRepository:
     return DocumentRepository(request.app.state.mongo_db)
 
@@ -41,3 +43,14 @@ def get_chat_message_repository(request: Request) -> ChatMessageRepository:
 
 def get_ingestion_job_repository(request: Request) -> IngestionJobRepository:
     return IngestionJobRepository(request.app.state.mongo_db)
+
+
+# ── 서비스 프로바이더 ──
+def get_document_service(request: Request) -> DocumentService:
+    return DocumentService(
+        document_repo=get_document_repository(request),
+        job_repo=get_ingestion_job_repository(request),
+        producer=request.app.state.kafka_producer,
+        storage=FileStorage(get_settings()),
+        settings=get_settings(),
+    )
