@@ -57,7 +57,9 @@ def get_document_service(request: Request) -> DocumentService:
         producer=request.app.state.kafka_producer,
         storage=FileStorage(get_settings()),
         settings=get_settings(),
+        milvus=getattr(request.app.state, "milvus", None),
     )
+
 
 
 def get_chat_service(request: Request) -> ChatService:

@@ -1,9 +1,9 @@
-"""설계도면 API — 등록/목록/수정/리비전/삭제/원본 스트림."""
-
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, UploadFile
 from fastapi.responses import FileResponse
+
 
 from app.api.deps import get_drawing_service
 from app.schemas.drawing import DrawingOut, DrawingUpdateIn
@@ -75,10 +75,20 @@ async def delete_drawing(
 
 @router.get("/{drawing_id}/file")
 async def drawing_file(
-    drawing_id: str, service: Annotated[DrawingService, Depends(get_drawing_service)]
+    drawing_id: str,
+    service: Annotated[DrawingService, Depends(get_drawing_service)],
+    download: bool = False,
 ) -> FileResponse:
-    """원본 이미지 스트림 (썸네일/뷰어용)."""
+    """원본 이미지 스트림 — download=False 시 inline 미리보기, True 시 강제 다운로드."""
     entity = await service.get_drawing(drawing_id)
+    ext = entity.mime.split("/")[-1] if "/" in entity.mime else "png"
+    encoded = quote(f"{entity.drawing_no}.{ext}")
+    disposition = "attachment" if download else "inline"
+    headers = {"Content-Disposition": f"{disposition}; filename*=UTF-8''{encoded}"}
     return FileResponse(
-        entity.file_path, media_type=entity.mime, filename=f"{entity.drawing_no}.png"
+        entity.file_path,
+        media_type=entity.mime,
+        headers=headers,
     )
+
+

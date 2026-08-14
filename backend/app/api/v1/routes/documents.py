@@ -1,13 +1,13 @@
-"""매뉴얼 문서 API — 업로드/목록/상세/삭제/재수집."""
-
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, UploadFile
 from fastapi.responses import FileResponse
 
+
 from app.api.deps import get_document_service
 from app.schemas.common import PageOut
-from app.schemas.document import DocumentOut, JobOut
+from app.schemas.document import ChunkItem, DocumentChunksOut, DocumentOut, JobOut
 from app.services.document_service import DocumentService
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -53,15 +53,49 @@ async def get_document(
 
 
 @router.get("/{document_id}/file")
+
 async def document_file(
     document_id: str,
     service: Annotated[DocumentService, Depends(get_document_service)],
+    download: bool = False,
 ) -> FileResponse:
-    """원본 PDF 스트림 — 프론트 뷰어(iframe #page=N)로 열람한다."""
+    """원본 PDF 스트림 — download=False 시 inline 미리보기, True 시 강제 다운로드."""
     entity = await service.get_file(document_id)
+    encoded = quote(f"{entity.title}.pdf")
+    disposition = "attachment" if download else "inline"
+    headers = {"Content-Disposition": f"{disposition}; filename*=UTF-8''{encoded}"}
     return FileResponse(
-        entity.file_path, media_type="application/pdf", filename=f"{entity.title}.pdf"
+        entity.file_path,
+        media_type="application/pdf",
+        headers=headers,
     )
+
+
+
+@router.get("/{document_id}/chunks", response_model=DocumentChunksOut)
+async def get_document_chunks(
+    document_id: str,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+) -> DocumentChunksOut:
+    """문서의 분할된 청크 목록 조회 (학습/검증용)."""
+    entity, chunks = await service.get_chunks(document_id)
+    items = [
+        ChunkItem(
+            seq=c.get("seq", i),
+            page=c.get("page", 1),
+            heading=c.get("heading", ""),
+            text=c.get("text", ""),
+            char_count=len(c.get("text", "")),
+        )
+        for i, c in enumerate(chunks)
+    ]
+    return DocumentChunksOut(
+        document_id=entity.id or document_id,
+        title=entity.title,
+        total=len(items),
+        chunks=items,
+    )
+
 
 
 @router.delete("/{document_id}", status_code=204)

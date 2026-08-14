@@ -433,6 +433,13 @@ class OllamaProvider(LLMProvider): ...       # 선택: 로컬 폴백 (profile: l
 - 헤딩 경로를 청크 앞에 붙인다: `"[LINE1 사출성형 운전매뉴얼 > 3. 온도 파라미터 > 3.2 금형온도] 본문..."`
 - 표/절차(번호 목록)는 최대한 분할하지 않는다(잘리면 이어붙임 표시).
 - 페이지 경계보다 섹션 경계 우선.
+- 상세 전략 문서: `docs/INGESTION_STRATEGY.md` 참조.
+
+### 5.3 수집 에러 처리 & 청크/파일 API
+- **업로드 즉시 검증**: 0바이트, 비-PDF, `%PDF` 매직 바이트 불일치, 암호화/손상 파일은 202 접수 전 `ValidationAppError`(HTTP 422)로 즉시 거절.
+- **워커 치명적 오류 분기**: 텍스트 미추출/구조적 파싱 불가는 3회 재시도 없이 즉시 FAILED/DEAD 처리하고, `job.last_error`와 `document.error`에 근본 원인 기록.
+- **파일 스트림 모드**: `GET /documents/{id}/file` 및 `/drawings/{id}/file`에 `download=false`(기본값, `Content-Disposition: inline`) / `download=true`(`attachment`) 지원으로 브라우저 인라인 미리보기와 다운로드 분리.
+- **청크 조회 API**: `GET /documents/{id}/chunks` — Milvus 적재된 청크 목록(seq, page, heading, text, char_count) 반환.
 
 ---
 
@@ -476,8 +483,10 @@ Vite + React 18 + TypeScript(strict) + TailwindCSS + react-router-dom + @tanstac
 | 라우트 | 페이지 | 주요 요소 |
 |---|---|---|
 | `/` | 대시보드 | 문서/청크/도면/그래프 통계, 최근 질문, 파이프라인 상태 요약 |
-| `/chat` | 챗봇 | 좌: 세션 리스트 / 우: 대화. 스트리밍 토큰 렌더, 출처 카드(문서·페이지·점수), 영향분석 미니 그래프, 도면 라이트박스 뷰어 |
-| `/documents` | 매뉴얼 관리 | 드래그&드롭 업로드, 상태 배지(PENDING/PROCESSING/DONE/FAILED, polling), 상세(청크 수·페이지 수·최근 job), 삭제/재수집 |
+| `/chat` | 챗봇 | 좌: 세션 리스트 / 우: 대화. 스트리밍 토큰 렌더, 출처 카드(문서·페이지·점수), 영향분석 미니 그래프, 인라인 PDF/도면 라이트박스 뷰어 |
+| `/documents` | 매뉴얼 관리 | 드래그&드롭 업로드, 업로드 에러 배너, 상태 배지(PENDING/PROCESSING/DONE/FAILED), 상세(청크 수·페이지 수·최근 job), 원본 PDF 미리보기, **청크 뷰어 모달**, 삭제/재수집 |
+| `/drawings` | 도면 관리 | 도면 카드 그리드, 등록/수정 모달, 리비전 추가, 원본 이미지 뷰어 |
+| `/graph` | 지식그래프 | ForceGraph2D 시각화, 직관적 노드명(문서명/설비명/센서명), 노드 상세 패널, **줌(확대/축소/화면맞춤) 툴바 및 노드 간격(D3 물리력) 조절 슬라이더**, 노드/관계 CRUD |
 | `/drawings` | 도면 관리 | 그리드 카드 뷰, 등록/수정 폼(설비·라인·리비전), 이미지 프리뷰, 리비전 히스토리 |
 | `/graph` | 지식그래프 | force-graph 시각화, 설비 클릭 시 상세, 영향범위 하이라이트 |
 | `/pipeline` | 수집 작업 | job 테이블, 상태별 필터, 실패 로그 확인 |

@@ -104,10 +104,19 @@ class GraphRepository:
             result = await session.run(query)
             async for record in result:
                 node = record["n"]
+                labels = list(node.labels) if node.labels else ["Unknown"]
+                primary_label = labels[0]
+                node_name = (
+                    node.get("name")
+                    or node.get("title")
+                    or (f"문서 ({node['id'][:8]}...)" if primary_label == "Document" else node["id"])
+                )
                 nodes[node["id"]] = {
                     "id": node["id"],
-                    "name": node.get("name", node["id"]),
-                    "label": list(record["n"].labels)[0],
+                    "name": node_name,
+                    "label": primary_label,
+                    "title": node.get("title"),
+                    "props": dict(node),
                 }
                 rel, target = record["r"], record["m"]
                 if rel is not None and target is not None:
@@ -119,15 +128,29 @@ class GraphRepository:
                             "props": dict(rel),
                         }
                     )
+                    tgt_labels = list(target.labels) if target.labels else ["Unknown"]
+                    tgt_primary = tgt_labels[0]
+                    tgt_name = (
+                        target.get("name")
+                        or target.get("title")
+                        or (
+                            f"문서 ({target['id'][:8]}...)"
+                            if tgt_primary == "Document"
+                            else target["id"]
+                        )
+                    )
                     nodes.setdefault(
                         target["id"],
                         {
                             "id": target["id"],
-                            "name": target.get("name", target["id"]),
-                            "label": list(record["m"].labels)[0],
+                            "name": tgt_name,
+                            "label": tgt_primary,
+                            "title": target.get("title"),
+                            "props": dict(target),
                         },
                     )
         return {"nodes": list(nodes.values()), "links": links}
+
 
     async def impact(self, root_id: str, *, max_depth: int = 3) -> dict:
         """root(설비/센서)로부터 하류 영향범위 traversal.

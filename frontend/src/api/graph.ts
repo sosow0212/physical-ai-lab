@@ -6,7 +6,12 @@ export interface GraphNode {
   id: string;
   name: string;
   label: "Line" | "Equipment" | "Sensor" | "Document";
+  title?: string;
+  props?: Record<string, unknown>;
+  x?: number;
+  y?: number;
 }
+
 
 export interface GraphLink {
   source: string;

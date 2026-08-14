@@ -32,9 +32,26 @@ interface Page<T> {
   page_size: number;
 }
 
+export interface DocumentChunk {
+  seq: number;
+  page: number;
+  heading: string;
+  text: string;
+  char_count: number;
+}
+
+export interface DocumentChunksResponse {
+  document_id: string;
+  title: string;
+  total: number;
+  chunks: DocumentChunk[];
+}
+
 export const documentsApi = {
   list: () => get<Page<DocumentItem>>("/documents"),
-  fileUrl: (id: string) => `/api/v1/documents/${id}/file`,
+  fileUrl: (id: string, download = false) =>
+    `/api/v1/documents/${id}/file${download ? "?download=true" : ""}`,
+  getChunks: (id: string) => get<DocumentChunksResponse>(`/documents/${id}/chunks`),
   upload: (files: File[]) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
@@ -44,3 +61,4 @@ export const documentsApi = {
   reingest: (id: string) => post<DocumentItem>(`/documents/${id}/reingest`),
   jobs: () => get<Page<JobItem>>("/pipeline/jobs"),
 };
+

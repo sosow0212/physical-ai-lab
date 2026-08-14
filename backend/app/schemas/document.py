@@ -70,3 +70,19 @@ class JobOut(BaseModel):
             finished_at=job.finished_at,
             created_at=job.created_at,
         )
+
+
+class ChunkItem(BaseModel):
+    seq: int
+    page: int
+    heading: str
+    text: str
+    char_count: int
+
+
+class DocumentChunksOut(BaseModel):
+    document_id: str
+    title: str
+    total: int
+    chunks: list[ChunkItem]
+
