@@ -44,8 +44,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "glm-4.6"
     llm_temperature: float = 0.2
-    llm_max_tokens: int = 2048
+    llm_max_tokens: int = 4096
     llm_timeout_seconds: int = 120
+    # glm 추론 모델의 thinking 토글 — RAG 답변은 근거가 이미 주어져 disabled 기본
+    llm_thinking: str = "disabled"  # enabled | disabled
 
     # ── 임베딩 — 채팅과 별도 provider 가능 ──
     embedding_provider: str = "ollama"  # ollama(로컬) | openai(호환 API)

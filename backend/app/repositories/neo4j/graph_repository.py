@@ -1,0 +1,184 @@
+"""Neo4j 그래프 저장소 — overview/impact traversal + 시드."""
+
+import logging
+
+from neo4j import AsyncDriver
+
+logger = logging.getLogger(__name__)
+
+# 노드 라벨: Line, Equipment, Sensor, Document
+# 엣지: PART_OF, FEEDS(buffer_sec), AFFECTS(when,severity), MONITORS, ATTACHED_TO, DESCRIBES
+
+SEED_STATEMENTS = [
+    "MATCH (n) DETACH DELETE n",  # noqa: E501 — 단일 문장
+    """
+    CREATE (line:Line {id: 'LINE-1', name: '1번 사출성형 라인'})
+    """,
+    """
+    CREATE (ih:Equipment  {id: 'IH-250', name: '사출성형기',     type: '성형'}),
+           (tcu:Equipment {id: 'TCU-100', name: '금형온도조절기', type: '온도제어'}),
+           (ch:Equipment  {id: 'CH-200', name: '냉각수칠러',     type: '유틸리티'}),
+           (cv1:Equipment {id: 'CV-01', name: '이송 컨베이어',   type: '이송'}),
+           (cv2:Equipment {id: 'CV-02', name: '검사 컨베이어',   type: '이송'}),
+           (cv3:Equipment {id: 'CV-03', name: '양품 컨베이어',   type: '이송'}),
+           (vi:Equipment  {id: 'VI-200', name: '비전검사기',     type: '검사'}),
+           (pl:Equipment  {id: 'PL-01', name: '팔레타이저',      type: '포장'}),
+           (ac:Equipment  {id: 'AC-30', name: '스크류 컴프레서', type: '유틸리티'})
+    """,
+    """
+    CREATE (ts1:Sensor {id: 'TS-01', name: '실린더온도', unit: '°C'}),
+           (ts2:Sensor {id: 'TS-02', name: '금형온도',   unit: '°C'}),
+           (ts3:Sensor {id: 'TS-03', name: '실내온도',   unit: '°C'}),
+           (ps1:Sensor {id: 'PS-01', name: '냉각수압력', unit: 'MPa'})
+    """,
+    """
+    MATCH (line:Line {id: 'LINE-1'}) MATCH (e:Equipment)
+    WHERE e.id IN ['IH-250','TCU-100','CH-200','CV-01','CV-02','CV-03','VI-200','PL-01','AC-30']
+    CREATE (e)-[:PART_OF]->(line)
+    """,
+    """
+    MATCH (ih {id:'IH-250'}), (cv1 {id:'CV-01'}), (vi {id:'VI-200'})
+    MATCH (cv2 {id:'CV-02'}), (cv3 {id:'CV-03'}), (pl {id:'PL-01'})
+    CREATE (ih)-[:FEEDS {buffer_sec: 90}]->(cv1),
+           (cv1)-[:FEEDS]->(vi),
+           (vi)-[:FEEDS]->(cv2),
+           (vi)-[:FEEDS]->(cv3),
+           (cv3)-[:FEEDS]->(pl)
+    """,
+    """
+    MATCH (tcu {id:'TCU-100'}), (ih {id:'IH-250'}), (ch {id:'CH-200'}),
+          (cv1 {id:'CV-01'}), (vi {id:'VI-200'}), (pl {id:'PL-01'}), (ac {id:'AC-30'})
+    CREATE (tcu)-[:AFFECTS {when: '금형온도 +5°C 초과', severity: 'high'}]->(ih),
+           (ch)-[:AFFECTS {when: '냉각수 온도/압력 저하', severity: 'high'}]->(tcu),
+           (cv1)-[:AFFECTS {when: '정지 (버퍼 90초 소진)', severity: 'mid'}]->(ih),
+           (vi)-[:AFFECTS {when: '오판정 (실내온도 30°C 초과)', severity: 'mid'}]->(pl),
+           (ac)-[:AFFECTS {when: '공기압 0.5MPa 미만', severity: 'high'}]->(ih),
+           (ac)-[:AFFECTS {when: '공기압 저하', severity: 'mid'}]->(cv1),
+           (ac)-[:AFFECTS {when: '공기압 저하', severity: 'mid'}]->(vi)
+    """,
+    """
+    MATCH (ts1 {id:'TS-01'}), (ts2 {id:'TS-02'}), (ts3 {id:'TS-03'}), (ps1 {id:'PS-01'}),
+          (ih {id:'IH-250'}), (tcu {id:'TCU-100'}), (vi {id:'VI-200'}), (ch {id:'CH-200'})
+    CREATE (ts1)-[:MONITORS]->(ih),
+           (ts2)-[:MONITORS]->(tcu),
+           (ts3)-[:MONITORS]->(vi),
+           (ps1)-[:MONITORS]->(ch),
+           (ts2)-[:ATTACHED_TO]->(ih)
+    """,
+]
+
+
+class GraphRepository:
+    def __init__(self, driver: AsyncDriver) -> None:
+        self._driver = driver
+
+    async def reseed(self) -> dict:
+        """개발용 전체 재시드 (기존 그래프 삭제 후 샘플 라인 생성)."""
+        stats = {"nodes_deleted": 0, "nodes_created": 0, "relationships_created": 0}
+        async with self._driver.session() as session:
+            for statement in SEED_STATEMENTS:
+                summary = await session.run(statement)
+                counters = (await summary.consume()).counters
+                stats["nodes_deleted"] += counters.nodes_deleted
+                stats["nodes_created"] += counters.nodes_created
+                stats["relationships_created"] += counters.relationships_created
+        logger.info("그래프 재시드", extra=stats)
+        return stats
+
+    async def overview(self) -> dict:
+        """전체 그래프를 프론트 force-graph 형식으로 반환."""
+        query = """
+        MATCH (n)
+        OPTIONAL MATCH (n)-[r]->(m)
+        RETURN n, r, m
+        """
+        nodes: dict[str, dict] = {}
+        links: list[dict] = []
+        async with self._driver.session() as session:
+            result = await session.run(query)
+            async for record in result:
+                node = record["n"]
+                nodes[node["id"]] = {
+                    "id": node["id"],
+                    "name": node.get("name", node["id"]),
+                    "label": list(record["n"].labels)[0],
+                }
+                rel, target = record["r"], record["m"]
+                if rel is not None and target is not None:
+                    links.append(
+                        {
+                            "source": node["id"],
+                            "target": target["id"],
+                            "type": rel.type,
+                            "props": dict(rel),
+                        }
+                    )
+                    nodes.setdefault(
+                        target["id"],
+                        {
+                            "id": target["id"],
+                            "name": target.get("name", target["id"]),
+                            "label": list(record["m"].labels)[0],
+                        },
+                    )
+        return {"nodes": list(nodes.values()), "links": links}
+
+    async def impact(self, root_id: str, *, max_depth: int = 3) -> dict:
+        """root(설비/센서)로부터 하류 영향범위 traversal.
+
+        센서면 MONITORS/ATTACHED_TO 로 설비로 환산 후 FEEDS|AFFECTS*1..N 탐색.
+        """
+        # NOTE: Cypher는 가변 길이 경로(*1..N)에 파라미터를 쓸 수 없어 리터럴 3 고정
+        resolve_and_traverse = """
+        MATCH (root {id: $root_id})
+        CALL {
+            WITH root
+            MATCH (e:Equipment)
+            WHERE e = root OR (root)-[:MONITORS|ATTACHED_TO]->(e)
+            RETURN e
+        }
+        MATCH path = (e)-[:FEEDS|AFFECTS*1..3]->(imp)
+        RETURN root.id AS root, e.id AS via, imp.id AS impacted,
+               labels(imp)[0] AS impacted_label, imp.name AS impacted_name,
+               [r IN relationships(path) | type(r)] AS rels,
+               length(path) AS depth
+        ORDER BY depth
+        """
+        rows: list[dict] = []
+        async with self._driver.session() as session:
+            result = await session.run(resolve_and_traverse, root_id=root_id)
+            async for record in result:
+                rows.append(
+                    {
+                        "via": record["via"],
+                        "impacted": record["impacted"],
+                        "impacted_label": record["impacted_label"],
+                        "impacted_name": record["impacted_name"],
+                        "rels": record["rels"],
+                        "depth": record["depth"],
+                    }
+                )
+        root_name = rows[0].get("root", root_id)
+        # 깊이별 정리 (같은 대상 최단 경로만)
+        seen: dict[str, dict] = {}
+        for row in rows:
+            key = row["impacted"]
+            if key not in seen or row["depth"] < seen[key]["depth"]:
+                seen[key] = row
+        items = sorted(seen.values(), key=lambda r: (r["depth"], r["impacted"]))
+        return {"root": root_name, "items": items}
+
+    async def describe_equipment(self, doc_id: str, title: str, codes: list[str]) -> None:
+        """수집 완료 문서 → Document 노드 + DESCRIBES 엣지 (출처 연결)."""
+        if not codes:
+            return
+        query = """
+        MERGE (d:Document {mongo_id: $doc_id})
+        SET d.title = $title, d.id = $doc_id, d.label_name = '매뉴얼'
+        WITH d
+        UNWIND $codes AS code
+        MATCH (e {id: code})
+        MERGE (d)-[:DESCRIBES]->(e)
+        """
+        async with self._driver.session() as session:
+            await (await session.run(query, doc_id=doc_id, title=title, codes=codes)).consume()

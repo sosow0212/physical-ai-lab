@@ -26,6 +26,9 @@ async def stream_chat(messages: list[dict[str, str]], *, settings: Settings) -> 
         "temperature": settings.llm_temperature,
         "max_tokens": settings.llm_max_tokens,
     }
+    # GLM 추론 모델: thinking 토글 (RAG처럼 근거가 주어진 답변엔 disabled가 효과적)
+    if settings.llm_provider == "glm":
+        payload["thinking"] = {"type": settings.llm_thinking}
     headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
     url = f"{settings.llm_base_url}/chat/completions"
     try:

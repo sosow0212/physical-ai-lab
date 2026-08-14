@@ -2,7 +2,6 @@
 
 Spring의 @PostConstruct/@PreDestroy + 커너네이너 초기화 대응물.
 클라이언트는 app.state 에 보관하고, api/deps.py 에서 요청별로 꺼내 주입한다.
-(Milvus/Neo4j 클라이언트는 담당 Phase에서 이곳에 추가된다.)
 """
 
 import logging
@@ -15,6 +14,7 @@ from app.core.config import get_settings
 from app.infrastructure.kafka import create_producer, stop_producer
 from app.infrastructure.milvus import create_milvus_client, ensure_manual_chunks
 from app.infrastructure.mongo import create_mongo_client
+from app.infrastructure.neo4j import create_neo4j_driver
 from app.infrastructure.redis import create_redis
 
 logger = logging.getLogger(__name__)
@@ -30,18 +30,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     kafka_producer = await create_producer(settings)
     milvus_client = create_milvus_client(settings)
     ensure_manual_chunks(milvus_client, settings.embedding_dim)
+    neo4j_driver = create_neo4j_driver(settings)
+    await neo4j_driver.verify_connectivity()
 
     app.state.mongo_client = mongo_client
     app.state.mongo_db = mongo_client.get_default_database()
     app.state.redis = redis_client
     app.state.kafka_producer = kafka_producer
     app.state.milvus = milvus_client
+    app.state.neo4j = neo4j_driver
 
     logger.info("인프라 연결 완료", extra={"component": "lifespan"})
 
     yield
 
     await stop_producer(kafka_producer)
+    await neo4j_driver.close()
     await redis_client.aclose()
     milvus_client.close()
     mongo_client.close()

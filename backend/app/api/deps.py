@@ -12,6 +12,7 @@ from app.repositories.mongo.chat_repository import ChatMessageRepository, ChatSe
 from app.repositories.mongo.document_repository import DocumentRepository
 from app.repositories.mongo.drawing_repository import DrawingRepository
 from app.repositories.mongo.ingestion_job_repository import IngestionJobRepository
+from app.repositories.neo4j.graph_repository import GraphRepository
 from app.services.chat_service import ChatService
 from app.services.document_service import DocumentService
 
@@ -62,5 +63,10 @@ def get_chat_service(request: Request) -> ChatService:
         db=request.app.state.mongo_db,
         milvus=request.app.state.milvus,
         redis=request.app.state.redis,
+        neo4j_driver=request.app.state.neo4j,
         settings=get_settings(),
     )
+
+
+def get_graph_repository(request: Request) -> GraphRepository:
+    return GraphRepository(request.app.state.neo4j)

@@ -9,12 +9,14 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from neo4j import AsyncDriver
 from pymilvus import MilvusClient
 from redis.asyncio import Redis
 
 from app.core.config import Settings
 from app.domain.chat import ChatMessage, ChatSession, ChatSource, MessageRole
 from app.repositories.mongo.chat_repository import ChatMessageRepository, ChatSessionRepository
+from app.services.impact_service import ImpactService
 from app.services.llm_service import stream_chat
 from app.services.retriever_service import RetrieverService
 
@@ -38,12 +40,14 @@ class ChatService:
         db: AsyncIOMotorDatabase,
         milvus: MilvusClient,
         redis: Redis,
+        neo4j_driver: AsyncDriver,
         settings: Settings,
     ) -> None:
         self._sessions = ChatSessionRepository(db)
         self._messages = ChatMessageRepository(db)
         self._settings = settings
         self._retriever = RetrieverService(milvus, redis, _document_repo(db), settings)
+        self._impact = ImpactService(_graph_repo(neo4j_driver))
 
     # ── 세션 관리 ──
     async def create_session(self) -> ChatSession:
@@ -74,7 +78,21 @@ class ChatService:
         retrieval = await self._retriever.retrieve(question)
         yield {"event": "sources", "data": {"sources": retrieval.sources}}
 
-        # 2) (Phase 4 확장 지점: 영향분석 graph 이벤트)
+        # 2) 영향범위 분석 (설비/키워드 감지 시) → graph 이벤트
+        impact = None
+        try:
+            impact = await self._impact.analyze(question)
+        except Exception as exc:  # 그래프 장애가 채팅을 막지 않도록 격리
+            logger.warning("영향분석 실패(무시)", extra={"error": str(exc)[:150]})
+        if impact:
+            yield {
+                "event": "graph",
+                "data": {
+                    "root": impact["root"],
+                    "nodes": [i["impacted"] for i in impact["items"]],
+                    "items": impact["items"],
+                },
+            }
 
         # 3) 프롬프트 조립 + 사용자 메시지 저장
         history = await self._recent_history(session_id)
@@ -84,7 +102,12 @@ class ChatService:
         llm_messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             *history,
-            {"role": "user", "content": self._user_prompt(question, retrieval.context_block)},
+            {
+                "role": "user",
+                "content": self._user_prompt(
+                    question, retrieval.context_block, impact and self._impact.to_context(impact)
+                ),
+            },
         ]
 
         # 4) LLM 스트리밍 → token 이벤트
@@ -102,12 +125,19 @@ class ChatService:
 
         # 5) 어시스턴트 메시지 저장 + 세션 갱신 + done 이벤트
         sources = [ChatSource(**s) for s in retrieval.sources]
+        impact_payload = None
+        if impact:
+            impact_payload = {
+                "root": impact["root"],
+                "nodes": [i["impacted"] for i in impact["items"]],
+            }
         assistant = await self._messages.insert(
             ChatMessage(
                 session_id=session_id,
                 role=MessageRole.ASSISTANT,
                 content="".join(answer_parts),
                 sources=sources,
+                impact=impact_payload,
             )
         )
         title = question[:24] + ("…" if len(question) > 24 else "")
@@ -127,9 +157,12 @@ class ChatService:
         return [{"role": m.role.value, "content": m.content} for m in messages]
 
     @staticmethod
-    def _user_prompt(question: str, context_block: str) -> str:
+    def _user_prompt(question: str, context_block: str, impact_block: str | None = None) -> str:
         context = context_block or "(참고자료 없음 — 근거가 없다고 답할 것)"
-        return f"""[참고자료]
+        impact = f"[영향분석]\n{impact_block}" if impact_block else "[영향분석]\n(해당 없음)"
+        return f"""{impact}
+
+[참고자료]
 {context}
 
 [질문]
@@ -140,3 +173,9 @@ def _document_repo(db: AsyncIOMotorDatabase):
     from app.repositories.mongo.document_repository import DocumentRepository
 
     return DocumentRepository(db)
+
+
+def _graph_repo(driver: AsyncDriver):
+    from app.repositories.neo4j.graph_repository import GraphRepository
+
+    return GraphRepository(driver)

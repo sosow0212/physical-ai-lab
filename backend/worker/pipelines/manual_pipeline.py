@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from neo4j import AsyncDriver
 from pymilvus import MilvusClient
 from redis.asyncio import Redis
 
@@ -13,6 +14,7 @@ from app.domain.document import DocumentStatus
 from app.domain.ingestion_job import JobStatus
 from app.repositories.mongo.document_repository import DocumentRepository
 from app.repositories.mongo.ingestion_job_repository import IngestionJobRepository
+from app.repositories.neo4j.graph_repository import GraphRepository
 from app.services.embedding_service import embed_texts
 from worker.parser.pdf_parser import parse_pdf
 from worker.pipelines.chunker import chunk_document
@@ -31,12 +33,14 @@ class ManualPipeline:
         milvus: MilvusClient,
         redis: Redis,
         settings: Settings,
+        neo4j_driver: AsyncDriver | None = None,
     ) -> None:
         self._documents = DocumentRepository(db)
         self._jobs = IngestionJobRepository(db)
         self._milvus = milvus
         self._redis = redis
         self._settings = settings
+        self._graph = GraphRepository(neo4j_driver) if neo4j_driver else None
 
     async def upsert(self, document_id: str, job_id: str) -> None:
         """문서 수집 전체 흐름. 실패 시 예외를 던져 재시도/DLQ 대상이 된다."""
@@ -83,6 +87,12 @@ class ManualPipeline:
                 "equipment_refs": equipment_refs,
             },
         )
+        # 지식그래프 출처 연결 (Document -[:DESCRIBES]-> Equipment)
+        if self._graph is not None:
+            try:
+                await self._graph.describe_equipment(document_id, document.title, equipment_refs)
+            except Exception as exc:
+                logger.warning("DESCRIBES 엣지 실패(무시)", extra={"error": str(exc)[:150]})
         await self._jobs.update_by_id(job_id, {"status": JobStatus.DONE.value})
         logger.info(
             "수집 완료",

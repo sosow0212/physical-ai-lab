@@ -21,6 +21,7 @@ from app.core.logging import setup_logging
 from app.infrastructure.kafka import TOPIC_INGEST_DLQ, TOPIC_INGEST_JOBS, create_producer, publish
 from app.infrastructure.milvus import create_milvus_client, ensure_manual_chunks
 from app.infrastructure.mongo import create_mongo_client
+from app.infrastructure.neo4j import create_neo4j_driver
 from app.infrastructure.redis import create_redis
 from worker.pipelines.manual_pipeline import ManualPipeline
 
@@ -51,7 +52,8 @@ async def main() -> None:
     redis: Redis = create_redis(settings)
     milvus: MilvusClient = create_milvus_client(settings)
     ensure_manual_chunks(milvus, settings.embedding_dim)
-    pipeline = ManualPipeline(db, milvus, redis, settings)
+    neo4j_driver = create_neo4j_driver(settings)
+    pipeline = ManualPipeline(db, milvus, redis, settings, neo4j_driver=neo4j_driver)
 
     consumer = AIOKafkaConsumer(
         TOPIC_INGEST_JOBS,
@@ -82,6 +84,7 @@ async def main() -> None:
     finally:
         await consumer.stop()
         await producer.stop()
+        await neo4j_driver.close()
         await redis.aclose()
         milvus.close()
         mongo_client.close()

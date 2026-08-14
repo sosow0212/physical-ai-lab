@@ -4,7 +4,7 @@
 
 > 📚 **문서**
 > - **[docs/WORKPLAN.md](docs/WORKPLAN.md)** — 프로젝트 작업서 (아키텍처·API·데이터 설계·마일스톤)
-> - **[docs/PROGRESS.md](docs/PROGRESS.md)** — 현재 진행 상황 (Phase 0/1 완료, Phase 2 진행 중)
+> - **[docs/PROGRESS.md](docs/PROGRESS.md)** — 현재 진행 상황 (Phase 0~4 완료, Phase 5 진행 예정)
 > - [AGENTS.md](AGENTS.md) — AI 에이전트 작업 가이드
 
 ## 빠른 시작
@@ -15,12 +15,14 @@ cp .env.example .env   # 최초 clone 시 — 키 입력 후 저장
 
 # 1) 전체 스택 기동 (첫 회는 이미지 pull로 수 분 소요)
 make up
-# → 웹:    http://localhost:5173
+# → 웹:    http://localhost:5173  (챗봇/매뉴얼 관리/지식그래프 사용 가능)
 # → API:   http://localhost:8000/docs
 # → 헬스:  curl http://localhost:8000/api/v1/health
 
-# 2) 샘플 데이터 생성 (매뉴얼 PDF 6종 + 도면 PNG 3종 → sample-data/)
+# 2) 샘플 데이터 생성 + 시드 + 업로드 (매뉴얼 6종 PDF + 도면 3종 + 그래프)
 make gen-data
+curl -X POST http://localhost:8000/api/v1/graph/reseed   # Neo4j 시드
+./backend/scripts/upload_samples.sh                       # PDF 업로드(수집 자동)
 ```
 
 종료는 `make down` (볼륨 유지) / 완전 초기화는 `make reset` (⚠️ 데이터 전부 삭제).
