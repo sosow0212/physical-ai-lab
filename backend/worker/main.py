@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import signal
-from typing import Any
+from typing import Any, Protocol
 
 from aiokafka import AIOKafkaConsumer
 from pymilvus import MilvusClient
@@ -19,10 +19,15 @@ from redis.asyncio import Redis
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.infrastructure.kafka import TOPIC_INGEST_DLQ, TOPIC_INGEST_JOBS, create_producer, publish
-from app.infrastructure.milvus import create_milvus_client, ensure_manual_chunks
+from app.infrastructure.milvus import (
+    create_milvus_client,
+    ensure_drawing_cards,
+    ensure_manual_chunks,
+)
 from app.infrastructure.mongo import create_mongo_client
 from app.infrastructure.neo4j import create_neo4j_driver
 from app.infrastructure.redis import create_redis
+from worker.pipelines.drawing_pipeline import DrawingPipeline
 from worker.pipelines.manual_pipeline import ManualPipeline
 
 logger = logging.getLogger(__name__)
@@ -31,16 +36,12 @@ MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = [5, 15, 45]
 
 
-async def process_event(event: dict[str, Any], pipeline: ManualPipeline) -> None:
-    """이벤트 라우팅 — 현재는 manual 타입만 존재 (drawing은 Phase 5)."""
-    payload = event["payload"]
-    if payload["doc_type"] != "manual":
-        logger.warning("알 수 없는 작업 타입 — 스킵", extra={"doc_type": payload["doc_type"]})
-        return
-    if payload["action"] == "delete":
-        await pipeline.delete(payload["document_id"], payload["job_id"])
-    else:
-        await pipeline.upsert(payload["document_id"], payload["job_id"])
+class Pipeline(Protocol):
+    """워커가 사용하는 파이프라인 공통 인터페이스."""
+
+    async def upsert(self, document_id: str, job_id: str) -> None: ...
+    async def delete(self, document_id: str, job_id: str) -> None: ...
+    async def fail(self, job_id: str, document_id: str, error: str, *, dead: bool) -> None: ...
 
 
 async def main() -> None:
@@ -52,8 +53,13 @@ async def main() -> None:
     redis: Redis = create_redis(settings)
     milvus: MilvusClient = create_milvus_client(settings)
     ensure_manual_chunks(milvus, settings.embedding_dim)
+    ensure_drawing_cards(milvus, settings.embedding_dim)
     neo4j_driver = create_neo4j_driver(settings)
-    pipeline = ManualPipeline(db, milvus, redis, settings, neo4j_driver=neo4j_driver)
+
+    pipelines: dict[str, Pipeline] = {
+        "manual": ManualPipeline(db, milvus, redis, settings, neo4j_driver=neo4j_driver),
+        "drawing": DrawingPipeline(db, milvus, redis, settings),
+    }
 
     consumer = AIOKafkaConsumer(
         TOPIC_INGEST_JOBS,
@@ -79,7 +85,7 @@ async def main() -> None:
                 continue
             for _topic, records in batch.items():
                 for record in records:
-                    await handle_with_retry(record.value, pipeline, producer)
+                    await handle_with_retry(record.value, pipelines, producer)
                     await consumer.commit()
     finally:
         await consumer.stop()
@@ -91,14 +97,23 @@ async def main() -> None:
         logger.info("워커 종료")
 
 
-async def handle_with_retry(event: dict[str, Any], pipeline: ManualPipeline, producer: Any) -> None:
-    """재시도 정책 적용 처리 — 소진 시 DLQ 발행."""
+async def handle_with_retry(
+    event: dict[str, Any], pipelines: dict[str, Pipeline], producer: Any
+) -> None:
+    """doc_type 으로 파이프라인 선택 → 실행/재시도 → 소진 시 DLQ."""
     payload = event["payload"]
     job_id, document_id = payload["job_id"], payload["document_id"]
+    pipeline = pipelines.get(payload.get("doc_type", ""))
+    if pipeline is None:
+        logger.warning("알 수 없는 작업 타입 — 스킵", extra={"doc_type": payload.get("doc_type")})
+        return
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            await process_event(event, pipeline)
+            if payload["action"] == "delete":
+                await pipeline.delete(document_id, job_id)
+            else:
+                await pipeline.upsert(document_id, job_id)
             return
         except Exception as exc:
             logger.warning(

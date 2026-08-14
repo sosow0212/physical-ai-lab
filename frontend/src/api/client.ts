@@ -50,3 +50,13 @@ export async function post<T>(path: string, body?: unknown): Promise<T> {
 export async function postForm<T>(path: string, form: FormData): Promise<T> {
   return unwrap<T>(await fetch(`${API_BASE}${path}`, { method: "POST", body: form }));
 }
+
+export async function patch<T>(path: string, body: unknown): Promise<T> {
+  return unwrap<T>(
+    await fetch(`${API_BASE}${path}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}

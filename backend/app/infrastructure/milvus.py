@@ -10,6 +10,7 @@ from app.core.config import Settings
 logger = logging.getLogger(__name__)
 
 COLLECTION_MANUAL_CHUNKS = "manual_chunks"
+COLLECTION_DRAWING_CARDS = "drawing_cards"
 
 
 def create_milvus_client(settings: Settings) -> MilvusClient:
@@ -87,3 +88,61 @@ def query_manual_chunks(client: MilvusClient, filter_expr: str) -> list[dict[str
 def delete_manual_chunks_by_doc(client: MilvusClient, doc_id: str) -> None:
     """문서 삭제/재수집 전 청크 정리 (expr 삭제)."""
     client.delete(collection_name=COLLECTION_MANUAL_CHUNKS, filter=f'doc_id == "{doc_id}"')
+
+
+# ── 도면 카드 (제목·설명·설비 메타데이터 임베딩) ──
+
+
+def ensure_drawing_cards(client: MilvusClient, dim: int) -> None:
+    """drawing_cards 컬렉션이 없으면 생성한다 (멱등)."""
+    if client.has_collection(COLLECTION_DRAWING_CARDS):
+        return
+    schema = client.create_schema(auto_id=True, enable_dynamic_field=False)
+    schema.add_field("id", DataType.INT64, is_primary=True)
+    schema.add_field("drawing_id", DataType.VARCHAR, max_length=32)
+    schema.add_field("title", DataType.VARCHAR, max_length=256)
+    schema.add_field("description", DataType.VARCHAR, max_length=2048)
+    schema.add_field("equipment", DataType.VARCHAR, max_length=64)
+    schema.add_field("revision", DataType.INT64)
+    schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=dim)
+
+    index_params = client.prepare_index_params()
+    index_params.add_index(
+        field_name="embedding",
+        index_type="HNSW",
+        metric_type="COSINE",
+        params={"M": 16, "efConstruction": 200},
+    )
+    client.create_collection(COLLECTION_DRAWING_CARDS, schema=schema, index_params=index_params)
+    logger.info("Milvus 컬렉션 생성", extra={"collection": COLLECTION_DRAWING_CARDS, "dim": dim})
+
+
+def search_drawing_cards(
+    client: MilvusClient, vector: list[float], *, top_k: int = 3
+) -> list[dict[str, Any]]:
+    """도면 카드 dense 검색 — 채팅 출처 첨부용."""
+    results = client.search(
+        collection_name=COLLECTION_DRAWING_CARDS,
+        data=[vector],
+        limit=top_k,
+        output_fields=["drawing_id", "title", "description", "equipment", "revision"],
+        search_params={"metric_type": "COSINE", "params": {"ef": 64}},
+    )
+    hits: list[dict[str, Any]] = []
+    for hit in results[0]:
+        entity = hit.get("entity", {})
+        hits.append(
+            {
+                "drawing_id": entity["drawing_id"],
+                "title": entity["title"],
+                "description": entity["description"],
+                "equipment": entity.get("equipment", ""),
+                "revision": entity.get("revision", 1),
+                "score": 1.0 - hit["distance"],
+            }
+        )
+    return hits
+
+
+def delete_drawing_cards(client: MilvusClient, drawing_id: str) -> None:
+    client.delete(collection_name=COLLECTION_DRAWING_CARDS, filter=f'drawing_id == "{drawing_id}"')

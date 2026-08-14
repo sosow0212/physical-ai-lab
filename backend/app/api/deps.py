@@ -15,6 +15,7 @@ from app.repositories.mongo.ingestion_job_repository import IngestionJobReposito
 from app.repositories.neo4j.graph_repository import GraphRepository
 from app.services.chat_service import ChatService
 from app.services.document_service import DocumentService
+from app.services.drawing_service import DrawingService
 
 
 def get_mongo_db(request: Request):
@@ -70,3 +71,13 @@ def get_chat_service(request: Request) -> ChatService:
 
 def get_graph_repository(request: Request) -> GraphRepository:
     return GraphRepository(request.app.state.neo4j)
+
+
+def get_drawing_service(request: Request) -> DrawingService:
+    return DrawingService(
+        drawing_repo=get_drawing_repository(request),
+        job_repo=get_ingestion_job_repository(request),
+        producer=request.app.state.kafka_producer,
+        storage=FileStorage(get_settings()),
+        settings=get_settings(),
+    )

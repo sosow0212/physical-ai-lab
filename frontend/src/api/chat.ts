@@ -1,14 +1,18 @@
 /** 채팅 API — 세션/히스토리 + SSE 스트리밍 파서 */
 
 import { API_BASE, del, get, post } from "./client";
+import { drawingsApi } from "./drawings";
 
 export interface ChatSource {
-  type: "manual";
+  type: "manual" | "drawing";
   doc_id: string;
   title: string;
   page: number | null;
   score: number;
 }
+
+/** 도면 출처 → 원본 이미지 URL */
+export const sourceFileUrl = (s: ChatSource) => drawingsApi.fileUrl(s.doc_id);
 
 export interface SessionItem {
   id: string;

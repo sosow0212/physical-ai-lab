@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { askStream, chatApi, type ChatSource, type MessageItem, type SessionItem } from "../api/chat";
+import { askStream, chatApi, sourceFileUrl, type ChatSource, type MessageItem, type SessionItem } from "../api/chat";
 
 interface ChatMessageView extends MessageItem {
   streaming?: boolean;
@@ -12,6 +12,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
+  const [viewDrawing, setViewDrawing] = useState<ChatSource | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const loadSessions = useCallback(async () => {
@@ -136,7 +137,7 @@ export default function ChatPage() {
             </div>
           )}
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
+            <MessageBubble key={m.id} message={m} onOpenDrawing={setViewDrawing} />
           ))}
           <div ref={bottomRef} />
         </div>
@@ -161,11 +162,30 @@ export default function ChatPage() {
           </div>
         </div>
       </section>
+
+      {/* 도면 라이트박스 뷰어 */}
+      {viewDrawing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-8"
+          onClick={() => setViewDrawing(null)}
+        >
+          <div className="max-h-full max-w-4xl overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <img src={sourceFileUrl(viewDrawing)} alt={viewDrawing.title} className="rounded-lg bg-white" />
+            <p className="mt-2 text-center text-sm text-white">📐 {viewDrawing.title}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessageView }) {
+function MessageBubble({
+  message,
+  onOpenDrawing,
+}: {
+  message: ChatMessageView;
+  onOpenDrawing: (s: ChatSource) => void;
+}) {
   const isUser = message.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -182,15 +202,26 @@ function MessageBubble({ message }: { message: ChatMessageView }) {
         </div>
         {!isUser && !!message.sources.length && (
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {message.sources.map((s, i) => (
-              <span
-                key={`${s.doc_id}-${i}`}
-                title={`유사도 ${s.score}`}
-                className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
-              >
-                📄 {s.title} {s.page != null ? `p.${s.page}` : ""}
-              </span>
-            ))}
+            {message.sources.map((s, i) =>
+              s.type === "drawing" ? (
+                <button
+                  key={`${s.doc_id}-${i}`}
+                  title={`유사도 ${s.score} — 클릭하면 원본 도면을 엽니다`}
+                  onClick={() => onOpenDrawing(s)}
+                  className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs text-violet-700 hover:bg-violet-100"
+                >
+                  📐 {s.title} 열기
+                </button>
+              ) : (
+                <span
+                  key={`${s.doc_id}-${i}`}
+                  title={`유사도 ${s.score}`}
+                  className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+                >
+                  📄 {s.title} {s.page != null ? `p.${s.page}` : ""}
+                </span>
+              ),
+            )}
           </div>
         )}
         {!isUser && message.impact && (

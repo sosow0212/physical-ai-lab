@@ -12,7 +12,11 @@ from fastapi import FastAPI
 
 from app.core.config import get_settings
 from app.infrastructure.kafka import create_producer, stop_producer
-from app.infrastructure.milvus import create_milvus_client, ensure_manual_chunks
+from app.infrastructure.milvus import (
+    create_milvus_client,
+    ensure_drawing_cards,
+    ensure_manual_chunks,
+)
 from app.infrastructure.mongo import create_mongo_client
 from app.infrastructure.neo4j import create_neo4j_driver
 from app.infrastructure.redis import create_redis
@@ -30,6 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     kafka_producer = await create_producer(settings)
     milvus_client = create_milvus_client(settings)
     ensure_manual_chunks(milvus_client, settings.embedding_dim)
+    ensure_drawing_cards(milvus_client, settings.embedding_dim)
     neo4j_driver = create_neo4j_driver(settings)
     await neo4j_driver.verify_connectivity()
 

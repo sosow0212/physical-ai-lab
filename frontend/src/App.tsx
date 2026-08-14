@@ -2,6 +2,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 
 import ChatPage from "./pages/Chat";
 import DocumentsPage from "./pages/Documents";
+import DrawingsPage from "./pages/Drawings";
 import GraphPage from "./pages/Graph";
 import { Placeholder } from "./pages/Placeholder";
 
@@ -55,7 +56,7 @@ export default function App() {
           <Route path="/" element={<Placeholder title="대시보드" phase="Phase 6" />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
-          <Route path="/drawings" element={<Placeholder title="도면 관리" phase="Phase 5" />} />
+          <Route path="/drawings" element={<DrawingsPage />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/pipeline" element={<Placeholder title="수집 작업" phase="Phase 6" />} />
         </Routes>

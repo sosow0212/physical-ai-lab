@@ -46,7 +46,9 @@ class ChatService:
         self._sessions = ChatSessionRepository(db)
         self._messages = ChatMessageRepository(db)
         self._settings = settings
-        self._retriever = RetrieverService(milvus, redis, _document_repo(db), settings)
+        self._retriever = RetrieverService(
+            milvus, redis, _document_repo(db), settings, drawing_repo=_drawing_repo(db)
+        )
         self._impact = ImpactService(_graph_repo(neo4j_driver))
 
     # ── 세션 관리 ──
@@ -179,3 +181,9 @@ def _graph_repo(driver: AsyncDriver):
     from app.repositories.neo4j.graph_repository import GraphRepository
 
     return GraphRepository(driver)
+
+
+def _drawing_repo(db: AsyncIOMotorDatabase):
+    from app.repositories.mongo.drawing_repository import DrawingRepository
+
+    return DrawingRepository(db)
