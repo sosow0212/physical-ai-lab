@@ -1,6 +1,25 @@
 # Physical AI Lab (PAL)
 
-스마트공장 공정 매뉴얼·설계도면 기반 RAG 챗봇 — **Vite + FastAPI 학습 프로젝트**
+공정 매뉴얼, 설계도면 기반 RAG 챗봇 서비스
+
+공정 설계도 및 매뉴얼 데이터와 설비 간 Graph 관계도를 통해 맥락 기반 응답 제공
+
+## PoC 단계
+- [x] RAG + Graph RAG 구축
+- [x] 데이터 적재
+- [x] 챗봇 및 대시보드 구현
+- [ ] 조기 경보 시스템
+  - [ ] 모의 공정 데이터 Generator 추가
+  - [ ] 모의 공정 데이터 파이프라인 구축
+  - [ ] 조기 이상 탐지 시스템 설계
+- [ ] 개선
+  - [ ] Semantic Caching 적용
+  - [ ] pdf 추출 시 이미지 url replace 작업 및 청킹 개선 (경량 llm 통해서 다음 Chunking 전략 하나 선택 - Fixed-size, Recursive, Structured, Agentic -> 추후 추가 필요..)
+  - [ ] RAG 응답 평가 시스템 구축
+  - [ ] Observability
+
+## PoC 데모
+![demo.png](docs/img/demo.png)
 
 > 📚 **문서**
 > - **[docs/WORKPLAN.md](docs/WORKPLAN.md)** — 프로젝트 작업서 (아키텍처·API·데이터 설계·ADR)
@@ -57,12 +76,9 @@ curl -X POST http://localhost:8000/api/v1/graph/reseed
    │                                  ├─ Neo4j     (설비 영향범위 그래프)
    ├─ Redpanda(Kafka) → worker (수집 파이프라인, 재시도/DLQ)
    ├─ Redis (임베딩 캐시)
-   ├─ GLM-4.6 API (채팅, z.ai Coding Plan)
+   ├─ LLM API (채팅, 현재 z.ai Coding Plan GLM5.3 기반 챗봇 응답 제공)
    └─ Ollama bge-m3 (로컬 임베딩, 1024차원)
 ```
-
-- **백엔드 레이어**: `routes → services → repositories` + 순수 `domain` + `infrastructure` (Spring 대응 매핑은 WORKPLAN §4.2)
-- **AI 설정**: 전부 `.env`의 `LLM_*`/`EMBEDDING_*` (provider 교체, thinking 토글, 온도, top_k 등)
 
 ## 문제 해결
 
