@@ -12,6 +12,7 @@ from app.repositories.mongo.chat_repository import ChatMessageRepository, ChatSe
 from app.repositories.mongo.document_repository import DocumentRepository
 from app.repositories.mongo.drawing_repository import DrawingRepository
 from app.repositories.mongo.ingestion_job_repository import IngestionJobRepository
+from app.services.chat_service import ChatService
 from app.services.document_service import DocumentService
 
 
@@ -52,5 +53,14 @@ def get_document_service(request: Request) -> DocumentService:
         job_repo=get_ingestion_job_repository(request),
         producer=request.app.state.kafka_producer,
         storage=FileStorage(get_settings()),
+        settings=get_settings(),
+    )
+
+
+def get_chat_service(request: Request) -> ChatService:
+    return ChatService(
+        db=request.app.state.mongo_db,
+        milvus=request.app.state.milvus,
+        redis=request.app.state.redis,
         settings=get_settings(),
     )

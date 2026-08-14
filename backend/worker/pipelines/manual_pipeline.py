@@ -19,7 +19,9 @@ from worker.pipelines.chunker import chunk_document
 
 logger = logging.getLogger(__name__)
 
-EQUIPMENT_CODE_RE = re.compile(r"(?<![A-Za-z0-9-])[A-Z]{2,4}-\d{2,3}\b")  # IH-250 (PAL-OM-001 같은 문서번호 제외)
+EQUIPMENT_CODE_RE = re.compile(
+    r"(?<![A-Za-z0-9-])[A-Z]{2,4}-\d{2,3}\b"
+)  # IH-250 (PAL-OM-001 같은 문서번호 제외)
 
 
 class ManualPipeline:
