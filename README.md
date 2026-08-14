@@ -21,7 +21,7 @@
 ## PoC 데모
 
 <p align="center">
-  <img src="docs/img/demo.png" width="32%" />
+  <img src="docs/img/chat_demo.png" width="32%" />
   <img src="docs/img/graph_demo.png" width="32%" />
   <img src="docs/img/ews_demo.png" width="32%" />
 </p>
