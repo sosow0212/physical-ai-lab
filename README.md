@@ -8,10 +8,10 @@
 - [x] RAG + Graph RAG 구축
 - [x] 데이터 적재
 - [x] 챗봇 및 대시보드 구현
-- [ ] 조기 경보 시스템
-  - [ ] 모의 공정 데이터 Generator 추가
-  - [ ] 모의 공정 데이터 파이프라인 구축
-  - [ ] 조기 이상 탐지 시스템 설계
+- [x] 조기 경보 시스템
+  - [x] 모의 공정 데이터 Generator 추가 (초당 1~50Hz, 5종 시나리오)
+  - [x] 모의 공정 데이터 파이프라인 구축 (Kafka `telemetry.line1` 스트림)
+  - [x] 조기 이상 탐지 시스템 설계 (슬라이딩 윈도우 통계, 서킷 브레이커, GraphRAG/RAG 연동)
 - [ ] 개선
   - [ ] Semantic Caching 적용
   - [ ] pdf 추출 시 이미지 url replace 작업 및 청킹 개선 (경량 llm 통해서 다음 Chunking 전략 하나 선택 - Fixed-size, Recursive, Structured, Agentic -> 추후 추가 필요..)
@@ -19,23 +19,32 @@
   - [ ] Observability
 
 ## PoC 데모
-![demo.png](docs/img/demo.png)
+
+<p align="center">
+  <img src="docs/img/demo.png" width="32%" />
+  <img src="docs/img/graph_demo.png" width="32%" />
+  <img src="docs/img/ews_demo.png" width="32%" />
+</p>
 
 > 📚 **문서**
+> - **[docs/EARLY_WARNING_SYSTEM.md](docs/EARLY_WARNING_SYSTEM.md)** — 조기 경보 시스템 기술 명세 및 가이드
+> - **[docs/INGESTION_STRATEGY.md](docs/INGESTION_STRATEGY.md)** — PDF 파싱 및 청킹/하이브리드 인덱싱 가이드
 > - **[docs/WORKPLAN.md](docs/WORKPLAN.md)** — 프로젝트 작업서 (아키텍처·API·데이터 설계·ADR)
-> - **[docs/PROGRESS.md](docs/PROGRESS.md)** — 진행 상황 (Phase 0~6 완료)
+> - **[docs/PROGRESS.md](docs/PROGRESS.md)** — 진행 상황 (Phase 0~7 완료)
 > - [AGENTS.md](AGENTS.md) — AI 에이전트 작업 가이드
 
 ## 무엇을 할 수 있나?
 
 | 기능 | 설명 |
 |---|---|
+| ⚡ **조기 경보 (EWS)** | 실시간 모의 텔레메트리 스트리밍 + 슬라이딩 윈도우 통계(Z-score/변화율) + 공정별 서킷 브레이커 + GraphRAG 하류 영향도 연계 |
 | 💬 **RAG 챗봇** | 매뉴얼 PDF 기반 답변을 **SSE 스트리밍** + 출처(문서·페이지) 표시 |
 | 🔗 **GraphRAG** | "1번 라인 온도 영향범위" 같은 질문에 Neo4j 지식그래프 분석을 결합해 상·하류 설비 영향 답변 |
 | 📐 **도면 관리** | 설계도면 등록/수정/리비전 → 챗봇 답변에 원본 도면 첨부(클릭 시 뷰어) |
 | 📄 **매뉴얼 관리** | PDF 업로드 → Kafka→파싱→청킹→임베딩→Milvus 적재 파이프라인 (상태 실시간 추적) |
 | 🔍 **하이브리드 검색** | dense(bge-m3) + BM25를 RRF로 융합 |
 | 📊 **대시보드/파이프라인** | 지표 요약, 수집 작업 이력/에러/DLQ 확인 |
+
 
 ## 빠른 시작
 
@@ -66,7 +75,14 @@ curl -X POST http://localhost:8000/api/v1/graph/reseed
 | `make gen-data` | 샘플 매뉴얼·도면 생성 |
 | `make logs s=api` | 서비스별 로그 |
 | `make build` | 의존성 변경 시 재빌드 |
-| `make test` / `make fmt` | 백엔드 테스트(13종) / 포맷·린트 |
+| `make test` / `make fmt` | 백엔드 테스트(25종) / 포맷·린트 |
+| `make telemetry-start` | 모의 텔레메트리 제너레이터 가동 (정상 모드) |
+| `make telemetry-anomaly-40` | 이상 40% 시나리오 주입 |
+| `make telemetry-anomaly-70` | 이상 70% 고위험 시나리오 주입 |
+| `make telemetry-spike` | 급격한 과열 스파이크(트립) 주입 |
+| `make telemetry-reset` | 서킷 브레이커 전체 리셋 |
+| `make telemetry-stop` | 텔레메트리 제너레이터 정지 |
+
 
 ## 아키텍처 한눈에
 
