@@ -32,10 +32,26 @@ SEED_STATEMENTS = [
            (ac:Equipment  {id: 'AC-30', name: '스크류 컴프레서', type: '유틸리티'})
     """,
     """
-    CREATE (ts1:Sensor {id: 'TS-01', name: '실린더온도', unit: '°C'}),
-           (ts2:Sensor {id: 'TS-02', name: '금형온도',   unit: '°C'}),
-           (ts3:Sensor {id: 'TS-03', name: '실내온도',   unit: '°C'}),
-           (ps1:Sensor {id: 'PS-01', name: '냉각수압력', unit: 'MPa'})
+    CREATE (ts1:Sensor {id: 'TS-01', name: '실린더온도', unit: '°C',
+                       metric_name: 'cylinder_temp',
+                       warning_threshold: 238.0, trip_threshold: 245.0,
+                       is_lower_limit: false, base_mean: 220.0, base_std: 1.2}),
+           (ts2:Sensor {id: 'TS-02', name: '금형온도', unit: '°C',
+                       metric_name: 'mold_temperature',
+                       warning_threshold: 64.0, trip_threshold: 68.0,
+                       is_lower_limit: false, base_mean: 60.0, base_std: 0.6}),
+           (ts3:Sensor {id: 'TS-03', name: '실내온도', unit: '°C',
+                       metric_name: 'ambient_temp',
+                       warning_threshold: 29.0, trip_threshold: 32.0,
+                       is_lower_limit: false, base_mean: 24.0, base_std: 0.5}),
+           (ps1:Sensor {id: 'PS-01', name: '냉각수압력', unit: 'MPa',
+                       metric_name: 'chiller_pressure',
+                       warning_threshold: 0.30, trip_threshold: 0.25,
+                       is_lower_limit: true, base_mean: 0.42, base_std: 0.02}),
+           (pair:Sensor {id: 'PS-AIR', name: '공기압력', unit: 'MPa',
+                        metric_name: 'air_pressure',
+                        warning_threshold: 0.60, trip_threshold: 0.50,
+                        is_lower_limit: true, base_mean: 0.76, base_std: 0.03})
     """,
     """
     MATCH (line:Line {id: 'LINE-1'}) MATCH (e:Equipment)
@@ -64,11 +80,14 @@ SEED_STATEMENTS = [
     """,
     """
     MATCH (ts1 {id:'TS-01'}), (ts2 {id:'TS-02'}), (ts3 {id:'TS-03'}), (ps1 {id:'PS-01'}),
-          (ih {id:'IH-250'}), (tcu {id:'TCU-100'}), (vi {id:'VI-200'}), (ch {id:'CH-200'})
+          (pair {id:'PS-AIR'}),
+          (ih {id:'IH-250'}), (tcu {id:'TCU-100'}), (vi {id:'VI-200'}), (ch {id:'CH-200'}),
+          (ac {id:'AC-30'})
     CREATE (ts1)-[:MONITORS]->(ih),
            (ts2)-[:MONITORS]->(tcu),
            (ts3)-[:MONITORS]->(vi),
            (ps1)-[:MONITORS]->(ch),
+           (pair)-[:MONITORS]->(ac),
            (ts2)-[:ATTACHED_TO]->(ih)
     """,
 ]
@@ -109,7 +128,9 @@ class GraphRepository:
                 node_name = (
                     node.get("name")
                     or node.get("title")
-                    or (f"문서 ({node['id'][:8]}...)" if primary_label == "Document" else node["id"])
+                    or (
+                        f"문서 ({node['id'][:8]}...)" if primary_label == "Document" else node["id"]
+                    )
                 )
                 nodes[node["id"]] = {
                     "id": node["id"],
@@ -150,7 +171,6 @@ class GraphRepository:
                         },
                     )
         return {"nodes": list(nodes.values()), "links": links}
-
 
     async def impact(self, root_id: str, *, max_depth: int = 3) -> dict:
         """root(설비/센서)로부터 하류 영향범위 traversal.
@@ -213,6 +233,57 @@ class GraphRepository:
             await (await session.run(query, doc_id=doc_id, title=title, codes=codes)).consume()
 
     # ── CRUD (사용자 편집) ──
+
+    async def monitor_profiles(self) -> list[dict]:
+        """감시 대상 센서 프로파일 조회 — Sensor -[:MONITORS]-> Equipment + 임계치 props.
+
+        조기 경보 시스템(EWS)의 단일 진실 공급원. 그래프 UI에서 센서 노드의
+        warning_threshold/trip_threshold/unit/base_mean/base_std props를 편집하면
+        EWS·시뮬레이터가 그대로 따라온다.
+        """
+        query = """
+        MATCH (s:Sensor)-[:MONITORS]->(e:Equipment)
+        RETURN e.id AS equipment_id, e.name AS equipment_name,
+               s.id AS sensor_id,
+               s.metric_name AS metric_name, s.unit AS unit,
+               s.warning_threshold AS warning_threshold,
+               s.trip_threshold AS trip_threshold,
+               s.is_lower_limit AS is_lower_limit,
+               s.base_mean AS base_mean, s.base_std AS base_std
+        """
+        rows: list[dict] = []
+        async with self._driver.session() as session:
+            result = await session.run(query)
+            async for record in result:
+                rows.append(dict(record))
+        return rows
+
+    async def auto_register_monitor(
+        self, equipment_id: str, equipment_name: str, sensor_id: str, metric_name: str, unit: str
+    ) -> None:
+        """모르는 설비 텔레메트리 수신 시 Equipment+Sensor 자동 생성 (임계치는 미정)."""
+        query = """
+        MERGE (e:Equipment {id: $eq})
+        SET e.name = coalesce(e.name, $eq_name), e.auto_registered = true
+        MERGE (s:Sensor {id: $sensor})
+        SET s.name = coalesce(s.name, $sensor),
+            s.metric_name = coalesce(s.metric_name, $metric),
+            s.unit = coalesce(s.unit, $unit),
+            s.auto_registered = true
+        MERGE (s)-[:MONITORS]->(e)
+        """
+        async with self._driver.session() as session:
+            await (
+                await session.run(
+                    query,
+                    eq=equipment_id,
+                    eq_name=equipment_name,
+                    sensor=sensor_id or f"{equipment_id}-S1",
+                    metric=metric_name,
+                    unit=unit,
+                )
+            ).consume()
+        logger.info("모니터 대상 그래프 자동 등록", extra={"equipment_id": equipment_id})
 
     async def upsert_node(self, node_id: str, label: str, name: str, props: dict) -> dict:
         """노드 생성/갱신 (MERGE). 라벨은 화이트리스트로 검증한다."""

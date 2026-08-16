@@ -110,9 +110,7 @@ def is_non_retryable(exc: Exception) -> bool:
     if isinstance(exc, NON_RETRYABLE_EXCEPTIONS):
         return True
     exc_name = type(exc).__name__
-    if "FileDataError" in exc_name or "PdfError" in exc_name:
-        return True
-    return False
+    return "FileDataError" in exc_name or "PdfError" in exc_name
 
 
 async def handle_with_retry(
@@ -145,8 +143,14 @@ async def handle_with_retry(
             if is_non_retryable(exc):
                 error_text = f"수집 실패: {exc}"
                 await pipeline.fail(job_id, document_id, error_text, dead=True)
-                await publish(producer, TOPIC_INGEST_DLQ, {**event, "type": "ingest.document.dead", "error": error_text})
-                logger.error("치명적 수집 오류 → 즉시 DLQ", extra={"job_id": job_id, "error": error_text})
+                await publish(
+                    producer,
+                    TOPIC_INGEST_DLQ,
+                    {**event, "type": "ingest.document.dead", "error": error_text},
+                )
+                logger.error(
+                    "치명적 수집 오류 → 즉시 DLQ", extra={"job_id": job_id, "error": error_text}
+                )
                 return
 
             # 일시적 오류인 경우 중간 상태 기록
@@ -161,9 +165,12 @@ async def handle_with_retry(
 
     error_text = f"{MAX_ATTEMPTS}회 재시도 실패: {last_error_msg}"
     await pipeline.fail(job_id, document_id, error_text, dead=True)
-    await publish(producer, TOPIC_INGEST_DLQ, {**event, "type": "ingest.document.dead", "error": error_text})
-    logger.error("작업 DEAD → DLQ", extra={"job_id": job_id, "document_id": document_id, "error": error_text})
-
+    await publish(
+        producer, TOPIC_INGEST_DLQ, {**event, "type": "ingest.document.dead", "error": error_text}
+    )
+    logger.error(
+        "작업 DEAD → DLQ", extra={"job_id": job_id, "document_id": document_id, "error": error_text}
+    )
 
 
 if __name__ == "__main__":

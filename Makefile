@@ -42,3 +42,22 @@ test: ## 백엔드 테스트
 
 fmt: ## 백엔드 포맷/린트
 	cd backend && uv run ruff format . && uv run ruff check --fix
+
+telemetry-start: ## 텔레메트리 제너레이터 시작 (정상 모드)
+	curl -s -X POST "http://localhost:8000/api/v1/telemetry/generator/start?hz=5&scenario=NORMAL" | jq .
+
+telemetry-anomaly-40: ## 이상 40% 시나리오 주입
+	curl -s -X POST http://localhost:8000/api/v1/telemetry/generator/scenario -H "Content-Type: application/json" -d '{"scenario":"ANOMALY_40","hz":10}' | jq .
+
+telemetry-anomaly-70: ## 이상 70% 고위험 시나리오 주입
+	curl -s -X POST http://localhost:8000/api/v1/telemetry/generator/scenario -H "Content-Type: application/json" -d '{"scenario":"ANOMALY_70","hz":10}' | jq .
+
+telemetry-spike: ## 급격한 과열 스파이크 (트립 테스트) 주입
+	curl -s -X POST http://localhost:8000/api/v1/telemetry/generator/scenario -H "Content-Type: application/json" -d '{"scenario":"CRITICAL_SPIKE"}' | jq .
+
+telemetry-reset: ## 서킷 브레이커 전체 리셋
+	curl -s -X POST http://localhost:8000/api/v1/telemetry/circuit-breaker/reset | jq .
+
+telemetry-stop: ## 텔레메트리 제너레이터 정지
+	curl -s -X POST http://localhost:8000/api/v1/telemetry/generator/stop | jq .
+

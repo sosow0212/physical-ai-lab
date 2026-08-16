@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -30,6 +31,9 @@ export default function ChatPage() {
   const [busy, setBusy] = useState(false);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const location = useLocation() as { state?: { initialPrompt?: string } };
+  const [searchParams] = useSearchParams();
+  const autoAskedRef = useRef(false);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -126,6 +130,17 @@ export default function ChatPage() {
       void loadSessions();
     }
   };
+
+  // 외부 페이지(조기 경보 등)에서 지정한 질문 자동 전송 — ?ask=... 또는 location.state.initialPrompt
+  useEffect(() => {
+    if (autoAskedRef.current || busy) return;
+    const prompt = searchParams.get("ask") ?? location.state?.initialPrompt;
+    if (prompt) {
+      autoAskedRef.current = true;
+      void send(prompt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, location.state]);
 
   return (
     <div className="flex h-full">

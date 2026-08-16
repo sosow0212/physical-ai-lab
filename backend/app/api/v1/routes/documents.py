@@ -4,7 +4,6 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Query, UploadFile
 from fastapi.responses import FileResponse
 
-
 from app.api.deps import get_document_service
 from app.schemas.common import PageOut
 from app.schemas.document import ChunkItem, DocumentChunksOut, DocumentOut, JobOut
@@ -53,7 +52,6 @@ async def get_document(
 
 
 @router.get("/{document_id}/file")
-
 async def document_file(
     document_id: str,
     service: Annotated[DocumentService, Depends(get_document_service)],
@@ -69,7 +67,6 @@ async def document_file(
         media_type="application/pdf",
         headers=headers,
     )
-
 
 
 @router.get("/{document_id}/chunks", response_model=DocumentChunksOut)
@@ -95,7 +92,6 @@ async def get_document_chunks(
         total=len(items),
         chunks=items,
     )
-
 
 
 @router.delete("/{document_id}", status_code=204)

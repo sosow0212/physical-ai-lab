@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { statsApi, type StatsPayload } from "../api/stats";
+import { telemetryApi, type CircuitBreakerStatus, type EarlyWarningAlert } from "../api/telemetry";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<StatsPayload | null>(null);
+  const [breakers, setBreakers] = useState<CircuitBreakerStatus[]>([]);
+  const [alerts, setAlerts] = useState<EarlyWarningAlert[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -13,11 +16,25 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const refreshEws = useCallback(async () => {
+    try {
+      setBreakers(await telemetryApi.getCircuitBreakers());
+      setAlerts(await telemetryApi.getAlerts(5));
+    } catch {
+      /* EWS 미기동 시 무시 */
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
+    void refreshEws();
     const t = setInterval(() => void refresh(), 10000);
-    return () => clearInterval(t);
-  }, [refresh]);
+    const t2 = setInterval(() => void refreshEws(), 5000);
+    return () => {
+      clearInterval(t);
+      clearInterval(t2);
+    };
+  }, [refresh, refreshEws]);
 
   if (!stats) {
     return <div className="p-8 text-sm text-slate-400">통계를 불러오는 중...</div>;
@@ -59,6 +76,68 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* 조기 경보 요약 */}
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-700">⚡ 조기 경보 현황</h2>
+            <a href="/early-warning" className="text-xs text-blue-600 hover:underline">
+              대시보드 열기 →
+            </a>
+          </div>
+          <div className="mb-3 flex gap-2">
+            {breakers.map((cb) => (
+              <a
+                key={cb.equipment_id}
+                href="/early-warning"
+                title={`${cb.equipment_name} — ${cb.state}`}
+                className={`flex-1 rounded-lg border px-2 py-2 text-center transition hover:shadow-sm ${
+                  cb.state === "TRIP"
+                    ? "border-red-300 bg-red-50"
+                    : cb.state === "WARNING"
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                <p className="text-[10px] font-mono text-slate-500">{cb.equipment_id}</p>
+                <p
+                  className={`text-[10px] font-bold ${
+                    cb.state === "TRIP"
+                      ? "text-red-600"
+                      : cb.state === "WARNING"
+                        ? "text-amber-600"
+                        : "text-emerald-600"
+                  }`}
+                >
+                  {cb.state === "NORMAL" ? "● 정상" : cb.state}
+                </p>
+              </a>
+            ))}
+            {!breakers.length && (
+              <p className="w-full rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
+                감시 대상 없음
+              </p>
+            )}
+          </div>
+          {alerts.length ? (
+            <ul className="space-y-1.5">
+              {alerts.slice(0, 3).map((a) => (
+                <li
+                  key={a.alert_id}
+                  className={`truncate rounded-lg px-3 py-1.5 text-xs ${
+                    a.severity === "TRIP" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  🚨 {a.equipment_name} — {a.reason}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
+              발생한 경보 없음
+            </p>
+          )}
+        </section>
+
         {/* 최근 질문 */}
         <section className="rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">최근 질문</h2>

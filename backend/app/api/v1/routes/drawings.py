@@ -4,7 +4,6 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Form, UploadFile
 from fastapi.responses import FileResponse
 
-
 from app.api.deps import get_drawing_service
 from app.schemas.drawing import DrawingOut, DrawingUpdateIn
 from app.services.drawing_service import DrawingService
@@ -90,5 +89,3 @@ async def drawing_file(
         media_type=entity.mime,
         headers=headers,
     )
-
-

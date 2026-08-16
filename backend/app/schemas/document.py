@@ -85,4 +85,3 @@ class DocumentChunksOut(BaseModel):
     title: str
     total: int
     chunks: list[ChunkItem]
-

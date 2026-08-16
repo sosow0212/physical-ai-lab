@@ -38,6 +38,7 @@ interface GraphData {
 
 export default function GraphPage() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastClickRef = useRef<{ id: string; at: number }>({ id: "", at: 0 });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
 
@@ -286,8 +287,18 @@ export default function GraphPage() {
               const my = (src.y + tgt.y) / 2;
               ctx.fillText(REL_KO[link.type] ?? link.type, mx, my - 2);
             }}
-            onNodeClick={(n: object) => void runImpact(n as GraphNode)}
-            onNodeDblClick={(n: object) => void deleteNode((n as GraphNode).id)}
+            onNodeClick={(n: object) => {
+              const node = n as GraphNode;
+              // 수동 더블클릭 감지: 400ms 내 같은 노드 재클릭 → 삭제, 단일 클릭 → 영향범위
+              const now = Date.now();
+              if (lastClickRef.current.id === node.id && now - lastClickRef.current.at < 400) {
+                lastClickRef.current = { id: "", at: 0 };
+                void deleteNode(node.id);
+              } else {
+                lastClickRef.current = { id: node.id, at: now };
+                void runImpact(node);
+              }
+            }}
           />
         )}
 

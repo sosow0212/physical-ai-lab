@@ -61,7 +61,6 @@ def get_document_service(request: Request) -> DocumentService:
     )
 
 
-
 def get_chat_service(request: Request) -> ChatService:
     return ChatService(
         db=request.app.state.mongo_db,
@@ -91,3 +90,11 @@ def get_stats_service(request: Request) -> StatsService:
         db=request.app.state.mongo_db,
         graph_repo=GraphRepository(request.app.state.neo4j),
     )
+
+
+def get_telemetry_generator(request: Request):
+    return request.app.state.telemetry_generator
+
+
+def get_anomaly_detector(request: Request):
+    return request.app.state.anomaly_detector

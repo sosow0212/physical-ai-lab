@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import chat, documents, drawings, graph, health, pipeline, stats
+from app.api.v1.routes import chat, documents, drawings, graph, health, pipeline, stats, telemetry
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -12,3 +12,4 @@ api_router.include_router(pipeline.router)
 api_router.include_router(chat.router)
 api_router.include_router(graph.router)
 api_router.include_router(stats.router)
+api_router.include_router(telemetry.router)

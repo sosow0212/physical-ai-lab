@@ -60,7 +60,6 @@ class DocumentService:
             logger.info("문서 업로드", extra={"document_id": entity.id, "title": entity.title})
         return entities
 
-
     async def list_documents(
         self, *, status: str | None = None, q: str | None = None, page: int = 1, page_size: int = 20
     ) -> tuple[list[DocumentEntity], int]:
@@ -98,7 +97,9 @@ class DocumentService:
             chunks.sort(key=lambda c: c.get("seq", 0))
             return entity, chunks
         except Exception as exc:
-            logger.warning("Milvus 청크 조회 실패", extra={"document_id": document_id, "error": str(exc)})
+            logger.warning(
+                "Milvus 청크 조회 실패", extra={"document_id": document_id, "error": str(exc)}
+            )
             return entity, []
 
     async def delete_document(self, document_id: str) -> None:
@@ -156,9 +157,7 @@ class DocumentService:
 
         # 3. PDF 매직 바이트 (%PDF) 검증
         if not content.startswith(b"%PDF"):
-            raise ValidationAppError(
-                f"유효한 PDF 파일 형식이 아닙니다 (헤더 불일치): {filename}"
-            )
+            raise ValidationAppError(f"유효한 PDF 파일 형식이 아닙니다 (헤더 불일치): {filename}")
 
         # 4. PyMuPDF 열람 및 무결성 검증
         try:
@@ -190,4 +189,3 @@ def _oid(id_str: str):
     from bson import ObjectId
 
     return ObjectId(id_str)
-

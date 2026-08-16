@@ -45,10 +45,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.milvus = milvus_client
     app.state.neo4j = neo4j_driver
 
-    logger.info("인프라 연결 완료", extra={"component": "lifespan"})
+    # 조기 경보 시스템 (제너레이터 & 실시간 탐지기) 초기화 — 레지스트리(그래프 SSOT) 공유
+    from app.repositories.neo4j.graph_repository import GraphRepository
+    from app.services.anomaly_detector import AnomalyDetector
+    from app.services.monitor_registry import MonitorRegistry
+    from app.services.telemetry_service import TelemetryGenerator
+
+    monitor_registry = MonitorRegistry(GraphRepository(neo4j_driver))
+    telemetry_generator = TelemetryGenerator(kafka_producer, settings, registry=monitor_registry)
+    anomaly_detector = AnomalyDetector(
+        settings,
+        neo4j_driver=neo4j_driver,
+        milvus_client=milvus_client,
+        redis_client=redis_client,
+        mongo_db=mongo_client.get_default_database(),
+    )
+    await anomaly_detector.start()
+
+    app.state.telemetry_generator = telemetry_generator
+    app.state.anomaly_detector = anomaly_detector
+
+    logger.info("인프라 연결 및 조기 경보 시스템 초기화 완료", extra={"component": "lifespan"})
 
     yield
 
+    telemetry_generator.stop()
+    await anomaly_detector.stop()
     await stop_producer(kafka_producer)
     await neo4j_driver.close()
     await redis_client.aclose()

@@ -77,12 +77,26 @@ async def test_get_chunks_queries_milvus():
     milvus = MagicMock()
     # Mock Milvus query return
     milvus.query.return_value = [
-        {"doc_id": "doc123", "seq": 1, "page": 2, "heading": "2. 가동", "text": "[매뉴얼 > 2. 가동] 본문 2"},
-        {"doc_id": "doc123", "seq": 0, "page": 1, "heading": "1. 개요", "text": "[매뉴얼 > 1. 개요] 본문 1"},
+        {
+            "doc_id": "doc123",
+            "seq": 1,
+            "page": 2,
+            "heading": "2. 가동",
+            "text": "[매뉴얼 > 2. 가동] 본문 2",
+        },
+        {
+            "doc_id": "doc123",
+            "seq": 0,
+            "page": 1,
+            "heading": "1. 개요",
+            "text": "[매뉴얼 > 1. 개요] 본문 1",
+        },
     ]
 
     service = _dummy_service(milvus=milvus)
-    service._documents.find_by_id_or_fail = AsyncMock(return_value=MagicMock(id="doc123", title="테스트"))
+    service._documents.find_by_id_or_fail = AsyncMock(
+        return_value=MagicMock(id="doc123", title="테스트")
+    )
 
     doc, chunks = await service.get_chunks("doc123")
     assert doc.id == "doc123"

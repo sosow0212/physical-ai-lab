@@ -4,6 +4,7 @@ import ChatPage from "./pages/Chat";
 import DashboardPage from "./pages/Dashboard";
 import DocumentsPage from "./pages/Documents";
 import DrawingsPage from "./pages/Drawings";
+import EarlyWarningPage from "./pages/EarlyWarning";
 import GraphPage from "./pages/Graph";
 import PipelinePage from "./pages/Pipeline";
 
@@ -21,8 +22,9 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    title: "모니터링",
+    title: "모니터링 & 탐지",
     items: [
+      { to: "/early-warning", label: "조기 경보 (EWS)", icon: "⚡" },
       { to: "/", label: "대시보드", icon: "📊" },
       { to: "/pipeline", label: "수집 작업", icon: "⚙️" },
     ],
@@ -83,6 +85,7 @@ export default function App() {
       <main className="flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/early-warning" element={<EarlyWarningPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/drawings" element={<DrawingsPage />} />
@@ -93,3 +96,4 @@ export default function App() {
     </div>
   );
 }
+

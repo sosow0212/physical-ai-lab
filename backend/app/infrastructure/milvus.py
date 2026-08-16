@@ -93,6 +93,7 @@ def search_manual_chunks(
         collection_name=COLLECTION_MANUAL_CHUNKS,
         data=[vector],
         limit=top_k,
+        anns_field="embedding",  # sparse(BM25) 인덱스와 공존 → 필드 명시 필수
         filter=filter_expr or "",
         output_fields=["doc_id", "seq", "page", "heading", "text"],
         search_params={"metric_type": "COSINE", "params": {"ef": 64}},

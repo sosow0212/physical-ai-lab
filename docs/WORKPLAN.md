@@ -547,6 +547,31 @@ Vite + React 18 + TypeScript(strict) + TailwindCSS + react-router-dom + @tanstac
 
 ---
 
+---
+
+## 8. 조기 경보 시스템 (Early Warning System)
+
+### 8.1 개요 및 목적
+실시간 공정 텔레메트리 스트리밍(Kafka), 슬라이딩 윈도우 기반 통계적 이상 탐지, 공정별 서킷 브레이커(Circuit Breaker)를 통해 장비 고장/품질 이상을 사전에 경보하고 GraphRAG 및 RAG 매뉴얼과 연계하는 시스템.
+
+### 8.2 핵심 컴포넌트
+1. **모의 공정 데이터 Generator**:
+   - `LINE-1` 5대 설비(`TCU-100`, `CH-200`, `IH-250`, `VI-200`, `AC-30`) 실시간 센서 스트림 생성 (1~50 Hz).
+   - 시나리오 모드: `NORMAL`(100% 정상), `ANOMALY_40`(40% 확률 이상), `ANOMALY_70`(70% 확률 고위험 이상), `CRITICAL_SPIKE`(즉각 인터락 트립), `DRIFT`(서서히 과열 누적).
+2. **Kafka 스트리밍 파이프라인**:
+   - 토픽: `telemetry.line1`
+   - 메시지: `{timestamp, line_id, equipment_id, sensor_id, metric_name, value, unit, status}`
+3. **슬라이딩 윈도우 이상 탐지 & 서킷 브레이커**:
+   - 윈도우 크기 $N=30$, 이동평균/표준편차, Z-score, 변화율($\Delta x / \Delta t$) 실시간 계산.
+   - 상태 전이: `NORMAL` (정상) → `WARNING` (조기 경보, $Z > 2.5$) → `TRIP` (서킷브레이크 차단, $Z > 4.0$ or 인터락 초과).
+4. **GraphRAG & RAG 연계**:
+   - WARNING/TRIP 발생 시 Neo4j traversal로 하류 영향 설비 경로 자동 추출.
+   - Milvus RAG를 통해 해당 이상에 대한 긴급 조치 가이드 요약 생성.
+5. **조기 경보 대시보드 (`/early-warning`)**:
+   - 시나리오 제어 툴바, 서킷 브레이커 상태 카드 그리드, 실시간 텔레메트리 시계열 차트, GraphRAG 연동 알람 피드.
+
+---
+
 ## 9. 개발 워크플로 / 실행 방법
 
 ### 9.1 Makefile 타깃
@@ -559,11 +584,17 @@ make logs s=api    # 특정 서비스 로그
 make bootstrap     # gen-data + up + seed-graph + upload-samples
 make test          # 백엔드 pytest
 make fmt           # ruff + mypy (backend), biome or eslint (frontend)
+make telemetry-start       # 텔레메트리 제너레이터 시작 (정상 모드)
+make telemetry-anomaly-40  # 이상 40% 시나리오 주입
+make telemetry-anomaly-70  # 이상 70% 시나리오 주입
+make telemetry-spike       # 급격한 과열 스파이크 주입
+make telemetry-stop        # 제너레이터 정지
 ```
 
 ### 9.2 실행/종료 (README.md에도 동일하게 기재 — 반드시 최신 상태 유지)
 - 시작: `make bootstrap` (최초 1회, 이후 `make up`) → http://localhost:5173
 - API 문서: http://localhost:8000/docs
+- 조기 경보 모니터: http://localhost:5173/early-warning
 - 종료: `make down` / 완전 초기화: `make reset`
 - 사전 준비: `.env`의 `GLM_API_KEY`(GLM Coding Plan 키, 커밋 금지). LLM·임베딩은 모두 z.ai API 호출이므로 로컬 GPU·대용량 다운로드가 필요 없다.
 - 로컬 폴백(오프라인 학습용): `docker compose --profile local-llm up -d ollama` 후 `LLM_PROVIDER=ollama`로 전환. 임베딩 차원이 달라지므로 Milvus 컬렉션 재생성 필요.
@@ -596,7 +627,8 @@ make fmt           # ruff + mypy (backend), biome or eslint (frontend)
 | 4 | 지식그래프: Neo4j 시드, impact API, GraphRAG 결합, 그래프 뷰 | "영향범위" 질문에 그래프 근거 답변 |
 | 5 | 도면 관리: CRUD+리비전, 도면 기반 출처 첨부, 뷰어 | 시나리오 ②③ 동작 |
 | 6 | 다듬기: 대시보드, 하이브리드 검색(BM25+RRF), 테스트 보강, 문서화 | 전체 시나리오 E2E 통과 |
-| 7 | (선택) k8s 마이그레이션, reranker, VL 도면 캡셔닝, 인증 |
+| 7 | 조기 경보 시스템 (Early Warning): 모의 제너레이터, 슬라이딩 윈도우 탐지, 서킷 브레이커, GraphRAG/RAG 연계 알람, 프론트 모니터 | 실시간 이상 시뮬레이션 및 알람 E2E 통과 |
+| 8 | (선택) k8s 마이그레이션, reranker, VL 도면 캡셔닝, 인증 |
 
 ---
 
